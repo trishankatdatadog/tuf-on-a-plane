@@ -2,9 +2,10 @@ import tempfile
 
 import nox
 
-nox.options.sessions = "lint", "safety", "tests"
+nox.options.sessions = "lint", "mypy", "safety", "tests"
 
 locations = "src", "tests", "noxfile.py"
+package = "tuf_on_a_plane"
 pythons = ["3.9"]
 
 
@@ -34,6 +35,7 @@ def lint(session):
     install_with_constraints(
         session,
         "flake8",
+        "flake8-annotations",
         "flake8-bandit",
         "flake8-black",
         "flake8-bugbear",
@@ -42,7 +44,14 @@ def lint(session):
     session.run("flake8", *args)
 
 
-@nox.session(python="3.8")
+@nox.session(python=pythons[0])
+def mypy(session):
+    args = session.posargs or locations
+    install_with_constraints(session, "mypy")
+    session.run("mypy", *args)
+
+
+@nox.session(python=pythons[0])
 def safety(session):
     with tempfile.NamedTemporaryFile() as requirements:
         session.run(

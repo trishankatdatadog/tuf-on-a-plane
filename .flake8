@@ -5,5 +5,7 @@ ignore = E203,E501,W503
 import-order-style = google
 max-complexity = 10
 max-line-length = 80
-per-file-ignores = tests/*:S101
-select = B,B9,BLK,C,E,F,I,S,W
+per-file-ignores =
+    tests/*:S101,ANN
+    noxfile.py:ANN
+select = ANN,B,B9,BLK,C,E,F,I,S,W
