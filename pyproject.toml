@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "tuf-on-a-plane"
+version = "0.1.0"
+description = "A lightweight Pythonic TUF client"
+license = "Apache 2.0"
+readme = "README.md"
+homepage = "https://github.com/trishankatdatadog/tuf-on-a-plane"
+repository = "https://github.com/trishankatdatadog/tuf-on-a-plane"
+keywords = ["TUF"]
+authors = ["Trishank Karthik Kuppusamy <trishank.kuppusamy@datadoghq.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+securesystemslib = {extras = ["crypto", "pynacl"], version = "^0.17.0"}
+requests = "^2.24.0"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
