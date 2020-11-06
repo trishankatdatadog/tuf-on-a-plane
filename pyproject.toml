@@ -15,7 +15,23 @@ securesystemslib = {extras = ["crypto", "pynacl"], version = "^0.17.0"}
 requests = "^2.24.0"
 
 [tool.poetry.dev-dependencies]
+pytest = "^6.1.2"
+coverage = {extras = ["toml"], version = "^5.3"}
+pytest-cov = "^2.10.1"
+pytest-mock = "^3.3.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+# pyproject.toml
+[tool.coverage.paths]
+source = ["src", "*/site-packages"]
+
+[tool.coverage.run]
+branch = true
+source = ["tuf_on_a_plane"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 50
