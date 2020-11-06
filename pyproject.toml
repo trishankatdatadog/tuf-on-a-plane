@@ -1,0 +1,46 @@
+[tool.poetry]
+name = "tuf-on-a-plane"
+version = "0.1.0"
+description = "A lightweight Pythonic TUF client"
+license = "Apache 2.0"
+readme = "README.md"
+homepage = "https://github.com/trishankatdatadog/tuf-on-a-plane"
+repository = "https://github.com/trishankatdatadog/tuf-on-a-plane"
+keywords = ["TUF"]
+authors = ["Trishank Karthik Kuppusamy <trishank.kuppusamy@datadoghq.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+securesystemslib = {extras = ["crypto", "pynacl"], version = "^0.17.0"}
+requests = "^2.24.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.1.2"
+coverage = {extras = ["toml"], version = "^5.3"}
+pytest-cov = "^2.10.1"
+pytest-mock = "^3.3.1"
+black = "^20.8b1"
+flake8 = "^3.8.4"
+flake8-bandit = "^2.1.2"
+flake8-black = "^0.2.1"
+flake8-bugbear = "^20.1.4"
+flake8-import-order = "^0.18.1"
+safety = "^1.9.0"
+mypy = "^0.790"
+flake8-annotations = "^2.4.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+# pyproject.toml
+[tool.coverage.paths]
+source = ["src"]
+
+[tool.coverage.run]
+branch = true
+source = ["tuf_on_a_plane"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 0
