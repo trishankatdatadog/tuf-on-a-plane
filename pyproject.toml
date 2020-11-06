@@ -35,7 +35,7 @@ build-backend = "poetry.core.masonry.api"
 
 # pyproject.toml
 [tool.coverage.paths]
-source = ["src", "*/site-packages"]
+source = ["src"]
 
 [tool.coverage.run]
 branch = true
@@ -43,4 +43,4 @@ source = ["tuf_on_a_plane"]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 50
+fail_under = 0
