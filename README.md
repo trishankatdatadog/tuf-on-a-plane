@@ -5,7 +5,7 @@
 Allegedly, a minimal, Pythonic TUF client can be written on a long flight. This was written _after_ that flight, but hey, it's a shot.
 
 Features include:
-* A "hypermodern" Python setup for packaging, testing, linting, typing, documentation, and CI/CD
+* A ["hypermodern"](https://cjolowicz.github.io/posts/hypermodern-python-01-setup/) Python setup for packaging, testing, linting, typing, documentation, and CI/CD
 * Abstract metadata "syntax trees" a.k.a. models
 * Recursive descent parsers for concrete metadata formats (e.g., JSON)
 
