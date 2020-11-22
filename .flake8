@@ -1,11 +1,10 @@
 # .flake8
 [flake8]
 application-import-names = tuf_on_a_plane,tests
-ignore = E203,E501,W503
+ignore = ANN101,ANN102,ANN204,B950,E203,E501,W503
 import-order-style = google
-max-complexity = 10
-max-line-length = 80
+#max-complexity = 10
 per-file-ignores =
-    tests/*:S101,ANN
     noxfile.py:ANN
+    tests/*:S101,ANN
 select = ANN,B,B9,BLK,C,E,F,I,S,W
