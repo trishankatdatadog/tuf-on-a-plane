@@ -98,7 +98,7 @@ class ThresholdOfPublicKeys:
         self.pubkeys = pubkeys
         self.threshold = threshold
 
-    def verify(self, signatures: Signatures, data: bytes) -> bool:
+    def verified(self, signatures: Signatures, data: bytes) -> bool:
         counter = 0
 
         # NOTE: each keyid is counted at most once.

@@ -6,4 +6,4 @@ def test_main_succeeds():
     try:
         JSONRepository(c)
     except NotImplementedError:
-        pass
+        raise

@@ -1,69 +1,28 @@
-from dataclasses import dataclass
 import os
 from typing import cast
 
-from securesystemslib.util import load_json_file
-
-from .exceptions import SignatureVerificationError
+from .config import Config
+from .exceptions import (
+    RepositoryError,
+    SignatureVerificationError,
+)
 from .models.common import (
-    Dir,
     Filepath,
     Hashes,
     Length,
     Role,
-    Url,
 )
-from .models.metadata import (
-    Metadata,
-    Root,
+from .models.metadata import Root
+from .readers import (
+    JSONReaderMixIn,
+    ReaderMixIn,
 )
-from .parsers.json import parse as json_parse
 
 
 # QUESTIONS
 # - Who verifies metadata, and when?
 # - Who reads metadata, and how?
 # - Who caches metadata, and when?
-
-
-@dataclass
-class Config:
-    # Where to store the current metadata cache.
-    curr_metadata_cache: Dir
-    # Where to read metadata from on the remote repository.
-    metadata_root: Url
-    # Where to store the previous metadata cache.
-    prev_metadata_cache: Dir
-    # Where to store downloaded targets.
-    targets_cache: Dir
-    # Where to read targets from on the remote repository.
-    targets_root: Url
-
-
-class ReaderMixIn:
-    """A mixin to separate TUF metadata details such as filename extension and
-    file format."""
-
-    def role_filename(self, rolename: Role) -> Filepath:
-        """Return the expected filename based on the rolename."""
-        raise NotImplementedError
-
-    def read_from_file(self, path: Filepath) -> Metadata:
-        """Read, parse, and return the Metadata from the file."""
-        raise NotImplementedError
-
-
-class JSONReaderMixIn(ReaderMixIn):
-    """Use this mixin to handle the JSON filename extension and file format."""
-
-    def role_filename(self, rolename: Role) -> Filepath:
-        """Return the expected filename based on the rolename."""
-        return f"{rolename}.json"
-
-    def read_from_file(self, path: Filepath) -> Metadata:
-        """Return the expected filename based on the rolename."""
-        # TODO: is it a big deal that we do not first check for existence of file?
-        return json_parse(load_json_file(path))
 
 
 # This is a Repository, not a Client, because I want to make it clear that you
@@ -87,20 +46,37 @@ class Repository(ReaderMixIn):
         self.__update_snapshot()
         self.__update_targets()
 
+    def __current_metadata_filename(self, rolename: Role) -> Filepath:
+        return os.path.join(
+            self.config.curr_metadata_cache, self.role_filename(rolename)
+        )
+
+    def __previous_metadata_filename(self, rolename: Role) -> Filepath:
+        return os.path.join(
+            self.config.prev_metadata_cache, self.role_filename(rolename)
+        )
+
     def __load_root(self) -> None:
         """5.0. Load the trusted root metadata file."""
         # NOTE: we must parse the root metadata file on disk in order to get
         # the keys to verify itself in the first place.
-        root_filename = self.role_filename("root")
-        curr_root_file = os.path.join(self.config.curr_metadata_cache, root_filename)
-        curr_root = self.read_from_file(curr_root_file)
+        metadata = self.read_from_file(self.__current_metadata_filename("root"))
+
         # FIXME: The following line is purely to keep mypy happy; otherwise,
         # it complains that the .signed.root attribute does not exist.
-        curr_root.signed = cast(Root, curr_root.signed)
+        metadata.signed = cast(Root, metadata.signed)
 
         # Verify self-signatures on previous root metadata file.
-        if not curr_root.signed.root.verify(curr_root.signatures, curr_root.canonical):
+        if not metadata.signed.root.verified(metadata.signatures, metadata.canonical):
             raise SignatureVerificationError("failed to verify self-signed root")
+
+        # We do not support non-consistent-snapshot repositories.
+        if not metadata.signed.consistent_snapshot:
+            raise RepositoryError("repository does not consistent_snapshot")
+
+        # Now that we have verified signatures, throw them away, and set the
+        # current root to the actual metadata of interest.
+        self.__root = metadata.signed
 
     def __update_root(self) -> None:
         """5.1. Update the root metadata file."""
@@ -118,7 +94,7 @@ class Repository(ReaderMixIn):
         """5.4. Download the top-level targets metadata file."""
         raise NotImplementedError
 
-    def download(self, path: str, length: Length, hashes: Hashes) -> Filepath:
+    def _download(self, path: str, length: Length, hashes: Hashes) -> Filepath:
         """Override this function to implement your own custom download logic."""
         raise NotImplementedError
 
