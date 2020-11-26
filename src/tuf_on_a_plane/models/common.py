@@ -1,3 +1,4 @@
+from functools import total_ordering
 import re
 from typing import Any, Dict
 
@@ -10,22 +11,72 @@ Role = str
 Url = str
 
 
-class Positive(int):
-    def __init__(self, value: int):
-        if value <= 0:
-            raise ValueError(f"{value} <= 0")
+@total_ordering
+class Natural:
+    def __init__(self, value: Any):
         self.value = value
 
+    def __add__(self, other: Any) -> Any:
+        if not isinstance(other, self.__class__):
+            other = self.__class__(other)
+        return self.__class__(self.value + other.value)
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, self.__class__):
+            other = self.__class__(other)
+        return self.value == other.value
+
+    def __lt__(self, other: Any) -> bool:
+        if not isinstance(other, self.__class__):
+            other = self.__class__(other)
+        return self.value < other.value
+
+    def __sub__(self, other: Any) -> Any:
+        if not isinstance(other, self.__class__):
+            other = self.__class__(other)
+        return self.__class__(self.value - other.value)
+
     def __repr__(self):
-        return f"Positive({self.value})"
+        return f"{self.__class__.__name__}({self.value})"
 
     def __str__(self):
         return str(self.value)
 
+    @property
+    def value(self) -> int:
+        return self.__value
+
+    @value.setter
+    def value(self, value: Any) -> None:
+        value = int(value)
+        if value < 0:
+            raise ValueError(f"{value} < 0")
+        self.__value = value
+
+
+Speed = Natural
+
+
+class Positive(Natural):
+    @property
+    def value(self) -> int:
+        return self.__value
+
+    @value.setter
+    def value(self, value: Any) -> None:
+        value = int(value)
+        if value <= 0:
+            raise ValueError(f"{value} <= 0")
+        self.__value = value
+
 
 Length = Positive
 Threshold = Positive
-Version = Positive
+
+
+class Version(Positive):
+    def __str__(self):
+        return f"v{self.value}"
 
 
 class SpecVersion:
@@ -37,18 +88,34 @@ class SpecVersion:
         if m is None:
             raise ValueError(f"{value} is not a SemVer")
         else:
-            self.value = value
-            self.major = int(m.group("major"))
-            self.minor = int(m.group("minor"))
-            self.patch = int(m.group("patch"))
-            self.prerelease = m.group("prerelease")
-            self.buildmetadata = m.group("buildmetadata")
+            self.__value = value
+            self.__major = Natural(m.group("major"))
+            self.__minor = Natural(m.group("minor"))
+            self.__patch = Natural(m.group("patch"))
+            self.__prerelease = m.group("prerelease")
+            self.__buildmetadata = m.group("buildmetadata")
 
     def __repr__(self):
-        return f"SpecVersion({self.value})"
+        return f"{self.__class__.__name__}({self.value})"
 
     def __str__(self):
-        return self.value
+        return f"v{self.value}"
+
+    @property
+    def major(self) -> Natural:
+        return self.__major
+
+    @property
+    def minor(self) -> Natural:
+        return self.__minor
+
+    @property
+    def patch(self) -> Natural:
+        return self.__patch
+
+    @property
+    def value(self) -> str:
+        return self.__value
 
 
 RoleToHashes = Dict[Role, Hashes]

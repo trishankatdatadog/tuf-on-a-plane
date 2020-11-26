@@ -56,7 +56,7 @@ def canonical(_signed: Json) -> bytes:
 def spec_version(sv: str) -> SpecVersion:
     _spec_version = SpecVersion(sv)
     if _spec_version.major != 1:
-        raise ValueError(f"unsupported major spec_version: {_spec_version.value}")
+        raise ValueError(f"unsupported major spec_version: {_spec_version}")
     return _spec_version
 
 
@@ -162,7 +162,7 @@ def root_role(role: dict, _keys: PublicKeys) -> ThresholdOfPublicKeys:
     _keys = {keyid: _keys[keyid] for keyid in set(keyids)}
 
     check_empty(role)
-    return ThresholdOfPublicKeys(_keys, threshold)
+    return ThresholdOfPublicKeys(threshold, _keys)
 
 
 def root_roles(

@@ -1,16 +1,24 @@
 import os
+import shutil
 from typing import cast
+from urllib.parse import urljoin
 
 from .config import Config
+from .download import (
+    DownloaderMixIn,
+    HTTPXDownloaderMixIn,
+)
 from .exceptions import (
+    ArbitrarySoftwareAttack,
+    NotFoundError,
     RepositoryError,
-    SignatureVerificationError,
+    RollbackAttack,
 )
 from .models.common import (
     Filepath,
-    Hashes,
-    Length,
     Role,
+    Url,
+    Version,
 )
 from .models.metadata import Root
 from .readers import (
@@ -27,40 +35,42 @@ from .readers import (
 
 # This is a Repository, not a Client, because I want to make it clear that you
 # can compose these objects to traverse multiple Repositories.
-class Repository(ReaderMixIn):
+class Repository(DownloaderMixIn, ReaderMixIn):
     """A class to abstractly handle the TUF client application workflow for a
     single repository.
 
     Do not instantiate this class."""
 
     def __init__(self, config: Config):
+        super().init_downloader()
         self.config = config
         self.__refresh()
+
+    def close(self) -> None:
+        self.config.close()
+        super().close_downloader()
 
     def __refresh(self) -> None:
         """Refresh metadata for all top-level roles so that we have a
         consistent snapshot of the repository."""
-        self.__load_root()
-        self.__update_root()
-        self.__update_timestamp()
-        self.__update_snapshot()
-        self.__update_targets()
+        try:
+            self.__load_root()
+            self.__update_root()
+            self.__update_timestamp()
+            self.__update_snapshot()
+            self.__update_targets()
+        finally:
+            self.close()
 
-    def __current_metadata_filename(self, rolename: Role) -> Filepath:
-        return os.path.join(
-            self.config.curr_metadata_cache, self.role_filename(rolename)
-        )
-
-    def __previous_metadata_filename(self, rolename: Role) -> Filepath:
-        return os.path.join(
-            self.config.prev_metadata_cache, self.role_filename(rolename)
-        )
+    def __local_metadata_filename(self, rolename: Role) -> Filepath:
+        return os.path.join(self.config.metadata_cache, self.role_filename(rolename))
 
     def __load_root(self) -> None:
         """5.0. Load the trusted root metadata file."""
         # NOTE: we must parse the root metadata file on disk in order to get
         # the keys to verify itself in the first place.
-        metadata = self.read_from_file(self.__current_metadata_filename("root"))
+        filename = self.__local_metadata_filename("root")
+        metadata = self.read_from_file(filename)
 
         # FIXME: The following line is purely to keep mypy happy; otherwise,
         # it complains that the .signed.root attribute does not exist.
@@ -68,7 +78,12 @@ class Repository(ReaderMixIn):
 
         # Verify self-signatures on previous root metadata file.
         if not metadata.signed.root.verified(metadata.signatures, metadata.canonical):
-            raise SignatureVerificationError("failed to verify self-signed root")
+            raise ArbitrarySoftwareAttack(
+                f"failed to verify self-signed root: {filename}"
+            )
+
+        # NOTE: the expiration of the trusted root metadata file does not
+        # matter, because we will attempt to update it in the next step.
 
         # We do not support non-consistent-snapshot repositories.
         if not metadata.signed.consistent_snapshot:
@@ -78,9 +93,61 @@ class Repository(ReaderMixIn):
         # current root to the actual metadata of interest.
         self.__root = metadata.signed
 
+    def __remote_metadata_filename(self, rolename: Role, version: Version) -> Filepath:
+        return f"{version.value}.{self.role_filename(rolename)}"
+
+    def __remote_metadata_path(self, path: Filepath) -> Url:
+        return urljoin(self.config.metadata_root, path)
+
+    def move_file(self, src: Filepath, dst: Filepath) -> None:
+        """Move file from <src> to <dst>."""
+        shutil.move(src, dst)
+
     def __update_root(self) -> None:
         """5.1. Update the root metadata file."""
-        raise NotImplementedError
+        counter = -1
+        # 5.1.1. Let N denote the version number of the trusted root metadata file.
+        n = self.__root.version
+
+        # 5.1.8. Repeat steps 5.1.1 to 5.1.8.
+        while True:
+            counter += 1
+            if counter > self.config.MAX_ROOT_ROTATIONS:
+                break
+
+            # 5.1.2. Try downloading version N+1 of the root metadata file.
+            n += 1
+            name = self.__remote_metadata_filename("root", n)
+            path = self.__remote_metadata_path(name)
+            try:
+                tmp_file = self.download(path, self.config.MAX_ROOT_LENGTH, self.config)
+            except NotFoundError:
+                break
+            metadata = self.read_from_file(tmp_file)
+            metadata.signed = cast(Root, metadata.signed)
+
+            # 5.1.3. Check for an arbitrary software attack.
+            if not self.__root.root.verified(metadata.signatures, metadata.canonical):
+                raise ArbitrarySoftwareAttack(f"{n-1} did not sign off {n} root")
+            if not metadata.signed.root.verified(
+                metadata.signatures, metadata.canonical
+            ):
+                raise ArbitrarySoftwareAttack(f"{n} root did not sign itself")
+
+            # 5.1.4. Check for a rollback attack.
+            if metadata.signed.version != n:
+                raise RollbackAttack(f"{metadata.signed.version} != {n} in {path}")
+
+            # 5.1.5. Note that the expiration of the new (intermediate) root
+            # metadata file does not matter yet.
+
+            # 5.1.6. Set the trusted root metadata file to the new root metadata file.
+            self.__root = metadata.signed
+
+            # 5.1.7. Persist root metadata.
+            self.move_file(tmp_file, self.__local_metadata_filename("root"))
+
+            # TODO: 5.1.(9-11).
 
     def __update_timestamp(self) -> None:
         """5.2. Download the timestamp metadata file."""
@@ -94,16 +161,12 @@ class Repository(ReaderMixIn):
         """5.4. Download the top-level targets metadata file."""
         raise NotImplementedError
 
-    def _download(self, path: str, length: Length, hashes: Hashes) -> Filepath:
-        """Override this function to implement your own custom download logic."""
-        raise NotImplementedError
-
     def get(self, path: str) -> Filepath:
         """Use this function to securely download and verify an update."""
         raise NotImplementedError
 
 
-class JSONRepository(JSONReaderMixIn, Repository):
+class JSONRepository(Repository, HTTPXDownloaderMixIn, JSONReaderMixIn):
     """Instantiate this class to read canonical JSON TUF metadata from a
     remote repository."""
 

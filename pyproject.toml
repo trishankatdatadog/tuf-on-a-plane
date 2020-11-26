@@ -12,7 +12,7 @@ authors = ["Trishank Karthik Kuppusamy <trishank.kuppusamy@datadoghq.com>"]
 [tool.poetry.dependencies]
 python = "^3.9"
 securesystemslib = {extras = ["crypto", "pynacl"], version = "^0.17.0"}
-requests = "^2.24.0"
+httpx = {extras = ["http2"], version = "^0.16.1"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.1.2"
@@ -44,4 +44,4 @@ source = ["tuf_on_a_plane"]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 80
+fail_under = 82
