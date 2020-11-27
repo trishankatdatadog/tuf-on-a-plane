@@ -195,7 +195,7 @@ def root_roles(
 
 
 def expires(_expires: str) -> datetime:
-    return datetime.strptime(_expires, "%Y-%m-%dT%H:%M:%SZ")
+    return datetime.strptime(_expires, "%Y-%m-%dT%H:%M:%S%z")
 
 
 def root(_signed: Json) -> Root:

@@ -10,6 +10,7 @@ from .download import (
 )
 from .exceptions import (
     ArbitrarySoftwareAttack,
+    FreezeAttack,
     NotFoundError,
     RepositoryError,
     RollbackAttack,
@@ -145,10 +146,18 @@ class Repository(DownloaderMixIn, ReaderMixIn):
             # 5.1.6. Set the trusted root metadata file to the new root metadata file.
             self.__root = metadata.signed
 
-            # 5.1.7. Persist root metadata.
-            self.move_file(tmp_file, self.__local_metadata_filename("root"))
+        # 5.1.9. Check for a freeze attack.
+        if self.__root.expires <= self.config.NOW:
+            raise FreezeAttack(
+                f"{self.__root.expires} <= {self.config.NOW} in {n-1} root"
+            )
 
-            # TODO: 5.1.(9-11).
+        # 5.1.7. Persist root metadata.
+        # NOTE: We violate the spec in persisting only after checking for a
+        # freeze attack, which I think is reasonable.
+        self.move_file(tmp_file, self.__local_metadata_filename("root"))
+
+        # TODO: 5.1.(10-11).
 
     def __update_timestamp(self) -> None:
         """5.2. Download the timestamp metadata file."""

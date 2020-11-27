@@ -29,6 +29,10 @@ class EndlessDataAttack(Attack):
     pass
 
 
+class FreezeAttack(Attack):
+    pass
+
+
 class RollbackAttack(Attack):
     pass
 
