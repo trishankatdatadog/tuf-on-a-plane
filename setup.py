@@ -44,7 +44,7 @@ setuptools.setup(
     # TODO: Consider vendoring as much as possible.
     install_requires=(
         "httpx[http2]",
-        "securesystemslib['crypto','pynacl']>=0.17.0",
+        "securesystemslib['crypto','pynacl']",
     ),
     classifiers=[
         "Programming Language :: Python :: 3",
