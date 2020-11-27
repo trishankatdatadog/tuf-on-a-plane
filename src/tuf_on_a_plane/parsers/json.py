@@ -11,6 +11,7 @@ from typing import (
 
 from securesystemslib.formats import encode_canonical
 
+from . import Parser
 from ..models.common import (
     Json,
     KeyID,
@@ -55,7 +56,7 @@ def canonical(_signed: Json) -> bytes:
 def spec_version(sv: str) -> SpecVersion:
     _spec_version = SpecVersion(sv)
     if _spec_version.major != 1:
-        raise ValueError(f"unsupported major spec_version: {_spec_version.value}")
+        raise ValueError(f"unsupported major spec_version: {_spec_version}")
     return _spec_version
 
 
@@ -161,7 +162,7 @@ def root_role(role: dict, _keys: PublicKeys) -> ThresholdOfPublicKeys:
     _keys = {keyid: _keys[keyid] for keyid in set(keyids)}
 
     check_empty(role)
-    return ThresholdOfPublicKeys(_keys, threshold)
+    return ThresholdOfPublicKeys(threshold, _keys)
 
 
 def root_roles(
@@ -305,28 +306,30 @@ def signatures(_signatures: List) -> Signatures:
     return keyids
 
 
-def parse(d: Json) -> Metadata:
-    """This method is used to try to parse any JSON dictionary containing TUF metadata.
+class JSONParser(Parser):
+    @classmethod
+    def parse(cls, d: Json) -> Metadata:
+        """This method is used to try to parse any JSON dictionary containing TUF metadata.
 
-    It destructively reads the dictionary in reverse order of canonical sorting.
-    If the original dictionary must be preserved, be sure to pass in a copy.
+        It destructively reads the dictionary in reverse order of canonical sorting.
+        If the original dictionary must be preserved, be sure to pass in a copy.
 
-    We assume that keys are sorted in both input and output.
-    We have always output keys in this order.
-    In Python >= 3.7, this order is preserved in input thanks to ordered dict.
+        We assume that keys are sorted in both input and output.
+        We have always output keys in this order.
+        In Python >= 3.7, this order is preserved in input thanks to ordered dict.
 
-    It does NOT verify signatures. Be sure to verify signatures after parsing."""
-    check_dict(d)
+        It does NOT verify signatures. Be sure to verify signatures after parsing."""
+        check_dict(d)
 
-    k, _signed = d.popitem()
-    check_key(k, "signed")
-    # NOTE: Before we destroy the signed object, build its canonical representation.
-    _canonical = canonical(_signed)
-    _signed = signed(_signed)
+        k, _signed = d.popitem()
+        check_key(k, "signed")
+        # NOTE: Before we destroy the signed object, build its canonical representation.
+        _canonical = canonical(_signed)
+        _signed = signed(_signed)
 
-    k, _signatures = d.popitem()
-    check_key(k, "signatures")
-    _signatures = signatures(_signatures)
+        k, _signatures = d.popitem()
+        check_key(k, "signatures")
+        _signatures = signatures(_signatures)
 
-    check_empty(d)
-    return Metadata(_canonical, _signatures, _signed)
+        check_empty(d)
+        return Metadata(_canonical, _signatures, _signed)

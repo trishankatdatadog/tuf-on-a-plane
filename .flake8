@@ -5,6 +5,7 @@ ignore = ANN101,ANN102,ANN204,B950,E203,E501,W503
 import-order-style = google
 #max-complexity = 10
 per-file-ignores =
+    setup.py:ANN001,ANN201
     noxfile.py:ANN
     tests/*:S101,ANN
 select = ANN,B,B9,BLK,C,E,F,I,S,W

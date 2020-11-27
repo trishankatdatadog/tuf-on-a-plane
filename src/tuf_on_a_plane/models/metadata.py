@@ -15,6 +15,7 @@ from .common import (
     RoleToVersion,
     SpecVersion,
     Threshold,
+    Version,
 )
 
 
@@ -29,7 +30,7 @@ Signatures = Dict[KeyID, Set[Signature]]
 class Signed:
     expires: datetime
     spec_version: SpecVersion
-    version: int
+    version: Version
 
 
 @dataclass
@@ -92,13 +93,13 @@ PublicKeys = Dict[KeyID, PublicKey]
 
 
 class ThresholdOfPublicKeys:
-    def __init__(self, pubkeys: PublicKeys, threshold: Threshold):
+    def __init__(self, threshold: Threshold, pubkeys: PublicKeys):
         if len(pubkeys) < threshold.value:
             raise ValueError(f"{len(pubkeys)} < {threshold.value}")
-        self.pubkeys = pubkeys
         self.threshold = threshold
+        self.pubkeys = pubkeys
 
-    def verify(self, signatures: Signatures, data: bytes) -> bool:
+    def verified(self, signatures: Signatures, data: bytes) -> bool:
         counter = 0
 
         # NOTE: each keyid is counted at most once.
