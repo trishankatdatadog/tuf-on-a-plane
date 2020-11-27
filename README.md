@@ -10,4 +10,4 @@ Features include:
 * [Recursive descent parsers](https://en.wikipedia.org/wiki/Recursive_descent_parser) for concrete metadata formats (e.g., JSON)
 * Readable code that closely follows the [specification](https://github.com/theupdateframework/specification)
 
-The idea is not necessarily to rewrite the TUF reference client from scratch, but to imagine what could be done when not encumbered by legacy code.
+The idea is not necessarily to rewrite the TUF [reference client](https://github.com/theupdateframework/tuf/tree/2a376ae7a7aa2aadf9cc812815eebbe129955b69/tuf/client) from scratch, but to imagine what could be done when not encumbered by legacy code.
