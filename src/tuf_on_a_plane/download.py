@@ -1,4 +1,3 @@
-from datetime import datetime
 import tempfile
 
 import httpx
@@ -11,6 +10,7 @@ from .exceptions import (
     SlowRetrievalAttack,
 )
 from .models.common import (
+    DateTime,
     Filepath,
     Length,
     Url,
@@ -71,21 +71,24 @@ class HTTPXDownloaderMixIn(DownloaderMixIn):
                         f"{alleged_length} > {expected_length} bytes on {path}"
                     )
 
-                prev_length, prev_time = 0, datetime.now()
+                prev_length, prev_time = 0, DateTime.now()
                 try:
                     for chunk in response.iter_bytes():
                         curr_length, curr_time = (
                             response.num_bytes_downloaded,
-                            datetime.now(),
+                            DateTime.now(),
                         )
                         length_diff = curr_length - prev_length
                         time_diff = (curr_time - prev_time).total_seconds()
                         prev_length, prev_time = curr_length, curr_time
                         chunk_speed = length_diff // time_diff
 
-                        if length_diff and config.MIN_BYTES_PER_SEC > chunk_speed:
+                        if (
+                            length_diff
+                            and chunk_speed < config.SLOW_RETRIEVAL_THRESHOLD
+                        ):
                             raise SlowRetrievalAttack(
-                                f"{chunk_speed} < {config.MIN_BYTES_PER_SEC} bytes/sec on {path}"
+                                f"{chunk_speed} < {config.SLOW_RETRIEVAL_THRESHOLD} bytes/sec on {path}"
                             )
                         if expected_length < curr_length:
                             raise EndlessDataAttack(

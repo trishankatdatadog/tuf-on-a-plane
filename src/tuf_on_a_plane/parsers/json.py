@@ -1,6 +1,5 @@
 """A recursive descent parser for JSON TUF metadata."""
 
-from datetime import datetime
 from typing import (
     Any,
     List,
@@ -13,6 +12,7 @@ from securesystemslib.formats import encode_canonical
 
 from . import Parser
 from ..models.common import (
+    DateTime,
     Json,
     KeyID,
     SpecVersion,
@@ -194,8 +194,8 @@ def root_roles(
     return root, snapshot, targets, timestamp
 
 
-def expires(_expires: str) -> datetime:
-    return datetime.strptime(_expires, "%Y-%m-%dT%H:%M:%S%z")
+def expires(_expires: str) -> DateTime:
+    return DateTime.strptime(_expires, "%Y-%m-%dT%H:%M:%S%z")
 
 
 def root(_signed: Json) -> Root:

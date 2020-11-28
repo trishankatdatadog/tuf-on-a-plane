@@ -1,6 +1,5 @@
 from binascii import unhexlify
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Dict, Set
 
 from securesystemslib.ecdsa_keys import verify_signature as verify_ecdsa_signature
@@ -8,11 +7,12 @@ from securesystemslib.ed25519_keys import verify_signature as verify_ed25519_sig
 from securesystemslib.rsa_keys import verify_rsa_signature
 
 from .common import (
+    DateTime,
     Hashes,
     KeyID,
     Length,
-    RoleToHashes,
-    RoleToVersion,
+    RolenameToHashes,
+    RolenameToVersion,
     SpecVersion,
     Threshold,
     Version,
@@ -28,7 +28,7 @@ Signatures = Dict[KeyID, Set[Signature]]
 
 @dataclass
 class Signed:
-    expires: datetime
+    expires: DateTime
     spec_version: SpecVersion
     version: Version
 
@@ -92,6 +92,8 @@ class PublicKey:
 PublicKeys = Dict[KeyID, PublicKey]
 
 
+# NOTE: maybe this can be a Role instead, but I will leave this design
+# decision to the future, especially when we write the code for delegations.
 class ThresholdOfPublicKeys:
     def __init__(self, threshold: Threshold, pubkeys: PublicKeys):
         if len(pubkeys) < threshold.value:
@@ -130,8 +132,8 @@ class Timestamp(Signed):
 
 @dataclass
 class Snapshot(Signed):
-    hashes: RoleToHashes
-    versions: RoleToVersion
+    hashes: RolenameToHashes
+    versions: RolenameToVersion
 
 
 @dataclass

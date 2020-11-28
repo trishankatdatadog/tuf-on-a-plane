@@ -1,14 +1,29 @@
+from datetime import datetime, timedelta, timezone
 from functools import total_ordering
 import re
-from typing import Any, Dict
+from typing import Any, cast, Dict
 
 Dir = str
 Filepath = str
 Hashes = Dict[str, str]
 Json = Dict[str, Any]
 KeyID = str
-Role = str
+Rolename = str
 Url = str
+
+
+class DateTime(datetime):
+    @classmethod
+    def laggingnow(cls, minutes: float = 0.0) -> "DateTime":
+        """Return datetime.now(timezone.utc), but delayed by the
+        datetime.timedelta() parameters specified."""
+        return cast(DateTime, datetime.now(timezone.utc) - timedelta(minutes=minutes))
+
+    @classmethod
+    def strptime(cls, date_string: str, format: str) -> "DateTime":
+        """string, format -> new datetime parsed from a string (like
+        time.strptime())."""
+        return cast(DateTime, super().strptime(date_string, format))
 
 
 @total_ordering
@@ -79,6 +94,10 @@ class Version(Positive):
         return f"v{self.value}"
 
 
+RolenameToHashes = Dict[Rolename, Hashes]
+RolenameToVersion = Dict[Rolename, Version]
+
+
 class SpecVersion:
     # https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
     SemVer = r"^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
@@ -116,7 +135,3 @@ class SpecVersion:
     @property
     def value(self) -> str:
         return self.__value
-
-
-RoleToHashes = Dict[Role, Hashes]
-RoleToVersion = Dict[Role, Version]

@@ -4,10 +4,7 @@ from typing import cast
 from urllib.parse import urljoin
 
 from .config import Config
-from .download import (
-    DownloaderMixIn,
-    HTTPXDownloaderMixIn,
-)
+from .download import DownloaderMixIn, HTTPXDownloaderMixIn
 from .exceptions import (
     ArbitrarySoftwareAttack,
     FreezeAttack,
@@ -16,17 +13,19 @@ from .exceptions import (
     RollbackAttack,
 )
 from .models.common import (
+    DateTime,
     Dir,
     Filepath,
-    Role,
+    Rolename,
     Url,
     Version,
 )
-from .models.metadata import Root
-from .readers import (
-    JSONReaderMixIn,
-    ReaderMixIn,
+from .models.metadata import (
+    Metadata,
+    Root,
+    ThresholdOfPublicKeys,
 )
+from .readers import JSONReaderMixIn, ReaderMixIn
 
 
 # QUESTIONS
@@ -64,8 +63,14 @@ class Repository(DownloaderMixIn, ReaderMixIn):
         finally:
             self.close()
 
-    def __local_metadata_filename(self, rolename: Role) -> Filepath:
+    def __local_metadata_filename(self, rolename: Rolename) -> Filepath:
         return os.path.join(self.config.metadata_cache, self.role_filename(rolename))
+
+    def __check_signatures(
+        self, role: ThresholdOfPublicKeys, metadata: Metadata, message: str
+    ) -> None:
+        if not role.verified(metadata.signatures, metadata.canonical):
+            raise ArbitrarySoftwareAttack(message)
 
     def __load_root(self) -> None:
         """5.0. Load the trusted root metadata file."""
@@ -79,10 +84,11 @@ class Repository(DownloaderMixIn, ReaderMixIn):
         metadata.signed = cast(Root, metadata.signed)
 
         # Verify self-signatures on previous root metadata file.
-        if not metadata.signed.root.verified(metadata.signatures, metadata.canonical):
-            raise ArbitrarySoftwareAttack(
-                f"failed to verify self-signed root: {filename}"
-            )
+        self.__check_signatures(
+            metadata.signed.root,
+            metadata,
+            f"failed to verify self-signed root: {filename}",
+        )
 
         # NOTE: the expiration of the trusted root metadata file does not
         # matter, because we will attempt to update it in the next step.
@@ -95,15 +101,21 @@ class Repository(DownloaderMixIn, ReaderMixIn):
         # current root to the actual metadata of interest.
         self.__root = metadata.signed
 
-    def __remote_metadata_filename(self, rolename: Role, version: Version) -> Filepath:
+    def __remote_metadata_filename(
+        self, rolename: Rolename, version: Version
+    ) -> Filepath:
         return f"{version.value}.{self.role_filename(rolename)}"
 
     def __remote_metadata_path(self, path: Filepath) -> Url:
         return urljoin(self.config.metadata_root, path)
 
-    def move_file(self, src: Dir, dst: Dir) -> None:
+    def __move_file(self, src: Dir, dst: Dir) -> None:
         """Move file from <src> to <dst>."""
         shutil.move(src, dst)
+
+    def __check_expiry(self, expires: DateTime, message: str) -> None:
+        if expires <= self.config.NOW:
+            raise FreezeAttack(f"{expires} <= {self.config.NOW}: {message}")
 
     def __update_root(self) -> None:
         """5.1. Update the root metadata file."""
@@ -125,16 +137,16 @@ class Repository(DownloaderMixIn, ReaderMixIn):
                 tmp_file = self.download(path, self.config.MAX_ROOT_LENGTH, self.config)
             except NotFoundError:
                 break
-            metadata = self.read_from_file(tmp_file)
-            metadata.signed = cast(Root, metadata.signed)
 
             # 5.1.3. Check for an arbitrary software attack.
-            if not self.__root.root.verified(metadata.signatures, metadata.canonical):
-                raise ArbitrarySoftwareAttack(f"{n-1} did not sign off {n} root")
-            if not metadata.signed.root.verified(
-                metadata.signatures, metadata.canonical
-            ):
-                raise ArbitrarySoftwareAttack(f"{n} root did not sign itself")
+            metadata = self.read_from_file(tmp_file)
+            metadata.signed = cast(Root, metadata.signed)
+            self.__check_signatures(
+                self.__root.root, metadata, f"{n-1} did not sign off {n} root"
+            )
+            self.__check_signatures(
+                metadata.signed.root, metadata, f"{n} root did not sign itself"
+            )
 
             # 5.1.4. Check for a rollback attack.
             if metadata.signed.version != n:
@@ -147,15 +159,12 @@ class Repository(DownloaderMixIn, ReaderMixIn):
             self.__root = metadata.signed
 
         # 5.1.9. Check for a freeze attack.
-        if self.__root.expires <= self.config.NOW:
-            raise FreezeAttack(
-                f"{self.__root.expires} <= {self.config.NOW} in {n-1} root"
-            )
+        self.__check_expiry(self.__root.expires, f"{n-1} root")
 
         # 5.1.7. Persist root metadata.
         # NOTE: We violate the spec in persisting only after checking for a
         # freeze attack, which I think is reasonable.
-        self.move_file(tmp_file, self.__local_metadata_filename("root"))
+        self.__move_file(tmp_file, self.__local_metadata_filename("root"))
 
         # TODO: 5.1.(10-11).
 

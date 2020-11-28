@@ -2,7 +2,7 @@ from securesystemslib.util import load_json_file
 
 from .models.common import (
     Filepath,
-    Role,
+    Rolename,
 )
 from .models.metadata import Metadata
 from .parsers.json import JSONParser
@@ -12,7 +12,7 @@ class ReaderMixIn:
     """A mixin to separate TUF metadata details such as filename extension and
     file format."""
 
-    def role_filename(self, rolename: Role) -> Filepath:
+    def role_filename(self, rolename: Rolename) -> Filepath:
         """Return the expected filename based on the rolename."""
         raise NotImplementedError
 
@@ -24,7 +24,7 @@ class ReaderMixIn:
 class JSONReaderMixIn(ReaderMixIn):
     """Use this mixin to handle the JSON filename extension and file format."""
 
-    def role_filename(self, rolename: Role) -> Filepath:
+    def role_filename(self, rolename: Rolename) -> Filepath:
         """Return the expected filename based on the rolename."""
         return f"{rolename}.json"
 

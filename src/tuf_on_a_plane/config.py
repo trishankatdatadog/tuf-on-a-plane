@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 import shutil
 import tempfile
 
 from .models.common import (
+    DateTime,
     Dir,
     Length,
     Speed,
@@ -31,13 +31,13 @@ class Config:
     # 16K ought to be more than enough for everyone ;)
     MAX_ROOT_LENGTH: Length = Length(2 ** 14)
 
-    # Minimum number of bytes that must be downloaded per second *on average*
-    # to prevent raising a slow retrieval attack. 1KB/s seems reasonable.
-    MIN_BYTES_PER_SEC: Speed = Speed(2 ** 10)
+    # Minimum number of bytes per second that must be downloaded per second
+    # *on average* to prevent raising a slow retrieval attack.
+    SLOW_RETRIEVAL_THRESHOLD: Speed = Speed(2 ** 10)
 
     # A fixed notion of "now" with some slack time:
     # https://github.com/theupdateframework/specification/pull/118
-    NOW = datetime.now(timezone.utc) - timedelta(minutes=5)
+    NOW: DateTime = DateTime.laggingnow(minutes=5)
 
     def close(self) -> None:
         shutil.rmtree(self.temp_dir)
