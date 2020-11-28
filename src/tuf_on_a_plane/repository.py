@@ -1,5 +1,3 @@
-import os
-import shutil
 from typing import cast
 from urllib.parse import urljoin
 
@@ -25,11 +23,12 @@ from .models.metadata import (
     ThresholdOfPublicKeys,
 )
 from .readers import JSONReaderMixIn, ReaderMixIn
+from .writers import WriterMixIn
 
 
 # This is a Repository, not a Client, because I want to make it clear that you
 # can compose these objects to traverse multiple Repositories.
-class Repository(DownloaderMixIn, ReaderMixIn):
+class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
     """A class to abstractly handle the TUF client application workflow for a
     single repository.
 
@@ -56,14 +55,14 @@ class Repository(DownloaderMixIn, ReaderMixIn):
         finally:
             self.close()
 
-    def __local_metadata_filename(self, rolename: Rolename) -> Filepath:
-        return os.path.join(self.config.metadata_cache, self.role_filename(rolename))
-
     def __check_signatures(
         self, role: ThresholdOfPublicKeys, metadata: Metadata, message: str
     ) -> None:
         if not role.verified(metadata.signatures, metadata.canonical):
             raise ArbitrarySoftwareAttack(message)
+
+    def __local_metadata_filename(self, rolename: Rolename) -> Filepath:
+        return self.local_metadata_filename(self.config.metadata_cache, rolename)
 
     def __load_root(self) -> None:
         """5.0. Load the trusted root metadata file."""
@@ -105,16 +104,6 @@ class Repository(DownloaderMixIn, ReaderMixIn):
     def __check_expiry(self, expires: DateTime, message: str) -> None:
         if expires <= self.config.NOW:
             raise FreezeAttack(f"{expires} <= {self.config.NOW}: {message}")
-
-    def __mv_file(self, src: Filepath, dst: Filepath) -> None:
-        shutil.move(src, dst)
-
-    def __rm_file(self, path: Filepath, ignore_errors: bool = False) -> None:
-        try:
-            os.remove(path)
-        except OSError:
-            if not ignore_errors:
-                raise
 
     def __update_root(self) -> None:
         """5.1. Update the root metadata file."""
@@ -171,17 +160,15 @@ class Repository(DownloaderMixIn, ReaderMixIn):
             self.__root.timestamp != curr_root.timestamp
             or self.__root.snapshot != curr_root.snapshot
         ):
-            self.__rm_file(
-                self.__local_metadata_filename("snapshot"), ignore_errors=True
-            )
-            self.__rm_file(
+            self.rm_file(self.__local_metadata_filename("snapshot"), ignore_errors=True)
+            self.rm_file(
                 self.__local_metadata_filename("timestamp"), ignore_errors=True
             )
 
         # 5.1.7. Persist root metadata.
         # NOTE: We violate the spec in persisting only *after* checking
         # everything, which I think is reasonable.
-        self.__mv_file(tmp_file, self.__local_metadata_filename("root"))
+        self.mv_file(tmp_file, self.__local_metadata_filename("root"))
         self.__root = curr_root
 
     def __update_timestamp(self) -> None:
