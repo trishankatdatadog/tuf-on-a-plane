@@ -25,9 +25,8 @@ class Config:
     # Where to store temporary files.
     temp_dir = tempfile.mkdtemp()
 
-    # Maximum number of root rotations. If you consider once per year, ten
-    # years should be more than enough.
-    MAX_ROOT_ROTATIONS = 10
+    # Maximum number of root rotations.
+    MAX_ROOT_ROTATIONS = 2 ** 5
     # 16K ought to be more than enough for everyone ;)
     MAX_ROOT_LENGTH: Length = Length(2 ** 14)
 

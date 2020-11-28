@@ -2,6 +2,9 @@ class Error(Exception):
     pass
 
 
+# Errors related to downloads.
+
+
 class DownloadError(Error):
     pass
 
@@ -10,7 +13,14 @@ class NotFoundError(DownloadError):
     pass
 
 
+# Errors about a remote repository.
+
+
 class RepositoryError(Error):
+    pass
+
+
+class NoConsistentSnapshotsError(RepositoryError):
     pass
 
 
