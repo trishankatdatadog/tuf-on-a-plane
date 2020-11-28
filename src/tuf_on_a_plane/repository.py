@@ -8,13 +8,12 @@ from .download import DownloaderMixIn, HTTPXDownloaderMixIn
 from .exceptions import (
     ArbitrarySoftwareAttack,
     FreezeAttack,
+    NoConsistentSnapshotsError,
     NotFoundError,
-    RepositoryError,
     RollbackAttack,
 )
 from .models.common import (
     DateTime,
-    Dir,
     Filepath,
     Rolename,
     Url,
@@ -26,12 +25,6 @@ from .models.metadata import (
     ThresholdOfPublicKeys,
 )
 from .readers import JSONReaderMixIn, ReaderMixIn
-
-
-# QUESTIONS
-# - Who verifies metadata, and when?
-# - Who reads metadata, and how?
-# - Who caches metadata, and when?
 
 
 # This is a Repository, not a Client, because I want to make it clear that you
@@ -95,7 +88,7 @@ class Repository(DownloaderMixIn, ReaderMixIn):
 
         # We do not support non-consistent-snapshot repositories.
         if not metadata.signed.consistent_snapshot:
-            raise RepositoryError("repository does not consistent_snapshot")
+            raise NoConsistentSnapshotsError
 
         # Now that we have verified signatures, throw them away, and set the
         # current root to the actual metadata of interest.
@@ -109,26 +102,29 @@ class Repository(DownloaderMixIn, ReaderMixIn):
     def __remote_metadata_path(self, path: Filepath) -> Url:
         return urljoin(self.config.metadata_root, path)
 
-    def __move_file(self, src: Dir, dst: Dir) -> None:
-        """Move file from <src> to <dst>."""
-        shutil.move(src, dst)
-
     def __check_expiry(self, expires: DateTime, message: str) -> None:
         if expires <= self.config.NOW:
             raise FreezeAttack(f"{expires} <= {self.config.NOW}: {message}")
 
+    def __mv_file(self, src: Filepath, dst: Filepath) -> None:
+        shutil.move(src, dst)
+
+    def __rm_file(self, path: Filepath, ignore_errors: bool = False) -> None:
+        try:
+            os.remove(path)
+        except OSError:
+            if not ignore_errors:
+                raise
+
     def __update_root(self) -> None:
         """5.1. Update the root metadata file."""
-        counter = -1
-        # 5.1.1. Let N denote the version number of the trusted root metadata file.
-        n = self.__root.version
+        # 5.1.1. Let N denote the version number of the trusted root metadata
+        # file.
+        curr_root = self.__root
+        n = curr_root.version
 
         # 5.1.8. Repeat steps 5.1.1 to 5.1.8.
-        while True:
-            counter += 1
-            if counter > self.config.MAX_ROOT_ROTATIONS:
-                break
-
+        for _ in range(self.config.MAX_ROOT_ROTATIONS):
             # 5.1.2. Try downloading version N+1 of the root metadata file.
             n += 1
             name = self.__remote_metadata_filename("root", n)
@@ -142,7 +138,7 @@ class Repository(DownloaderMixIn, ReaderMixIn):
             metadata = self.read_from_file(tmp_file)
             metadata.signed = cast(Root, metadata.signed)
             self.__check_signatures(
-                self.__root.root, metadata, f"{n-1} did not sign off {n} root"
+                curr_root.root, metadata, f"{n-1} did not sign off {n} root"
             )
             self.__check_signatures(
                 metadata.signed.root, metadata, f"{n} root did not sign itself"
@@ -155,18 +151,38 @@ class Repository(DownloaderMixIn, ReaderMixIn):
             # 5.1.5. Note that the expiration of the new (intermediate) root
             # metadata file does not matter yet.
 
-            # 5.1.6. Set the trusted root metadata file to the new root metadata file.
-            self.__root = metadata.signed
+            # 5.1.6. Set the trusted root metadata file to the new root metadata
+            # file.
+            curr_root = metadata.signed
+
+        # 5.1.11. Set whether consistent snapshots are used as per the trusted
+        # root metadata file (see Section 4.3).
+        # NOTE: We violate the spec in checking this *before* deleting local
+        # timestamp and/or snapshot metadata, which I think is reasonable.
+        if not curr_root.consistent_snapshot:
+            raise NoConsistentSnapshotsError
 
         # 5.1.9. Check for a freeze attack.
-        self.__check_expiry(self.__root.expires, f"{n-1} root")
+        self.__check_expiry(curr_root.expires, f"{n-1} root")
+
+        # 5.1.10. If the timestamp and / or snapshot keys have been rotated,
+        # then delete the trusted timestamp and snapshot metadata files.
+        if (
+            self.__root.timestamp != curr_root.timestamp
+            or self.__root.snapshot != curr_root.snapshot
+        ):
+            self.__rm_file(
+                self.__local_metadata_filename("snapshot"), ignore_errors=True
+            )
+            self.__rm_file(
+                self.__local_metadata_filename("timestamp"), ignore_errors=True
+            )
 
         # 5.1.7. Persist root metadata.
-        # NOTE: We violate the spec in persisting only after checking for a
-        # freeze attack, which I think is reasonable.
-        self.__move_file(tmp_file, self.__local_metadata_filename("root"))
-
-        # TODO: 5.1.(10-11).
+        # NOTE: We violate the spec in persisting only *after* checking
+        # everything, which I think is reasonable.
+        self.__mv_file(tmp_file, self.__local_metadata_filename("root"))
+        self.__root = curr_root
 
     def __update_timestamp(self) -> None:
         """5.2. Download the timestamp metadata file."""

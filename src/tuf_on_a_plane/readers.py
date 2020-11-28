@@ -30,5 +30,4 @@ class JSONReaderMixIn(ReaderMixIn):
 
     def read_from_file(self, path: Filepath) -> Metadata:
         """Return the expected filename based on the rolename."""
-        # TODO: is it a big deal that we do not first check for existence of file?
         return JSONParser.parse(load_json_file(path))

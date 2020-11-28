@@ -1,6 +1,6 @@
 from binascii import unhexlify
 from dataclasses import dataclass
-from typing import Dict, Set
+from typing import Any, Dict, Set
 
 from securesystemslib.ecdsa_keys import verify_signature as verify_ecdsa_signature
 from securesystemslib.ed25519_keys import verify_signature as verify_ed25519_signature
@@ -72,6 +72,11 @@ class PublicKey:
     scheme: Scheme
     value: str
 
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, PublicKey):
+            return False
+        return self.scheme is other.scheme and self.value == other.value
+
     def signed(self, sig: Signature, data: bytes) -> bool:
         # FIXME: The securesystemslib "abstraction" feels ad hoc...
         public = self.value
@@ -100,6 +105,18 @@ class ThresholdOfPublicKeys:
             raise ValueError(f"{len(pubkeys)} < {threshold.value}")
         self.threshold = threshold
         self.pubkeys = pubkeys
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, ThresholdOfPublicKeys):
+            return False
+        if self.threshold != other.threshold:
+            return False
+        if self.pubkeys.keys() != other.pubkeys.keys():
+            return False
+        for keyid in self.pubkeys:
+            if self.pubkeys[keyid] != other.pubkeys[keyid]:
+                return False
+        return True
 
     def verified(self, signatures: Signatures, data: bytes) -> bool:
         counter = 0

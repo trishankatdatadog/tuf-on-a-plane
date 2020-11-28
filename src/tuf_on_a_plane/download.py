@@ -39,13 +39,14 @@ class HTTPXDownloaderMixIn(DownloaderMixIn):
     """A mixin that uses httpx to download."""
 
     def init_downloader(self) -> None:
-        # Use a 10s timeout everywhere (connect/read/write/pool).
         self.__client = httpx.Client(
             headers={
                 "User-Agent": f"tuf-on-a-plane/{__version__} httpx/{httpx.__version__}"
             },
+            # Opportunistically use HTTP/2, if available.
             http2=True,
-            timeout=10,
+            # Use a 60s timeout everywhere (connect/read/write/pool).
+            timeout=60,
         )
 
     def close_downloader(self) -> None:
