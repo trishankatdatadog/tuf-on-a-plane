@@ -15,6 +15,9 @@ class ReaderMixIn:
     """A mixin to separate TUF metadata details such as filename extension and
     file format."""
 
+    def file_exists(self, path: Filepath) -> bool:
+        return os.path.isfile(path)
+
     def local_metadata_filename(
         self, metadata_cache: Dir, rolename: Rolename
     ) -> Filepath:

@@ -1,6 +1,6 @@
 from binascii import unhexlify
 from dataclasses import dataclass
-from typing import Any, Dict, Set
+from typing import Any, Dict, Optional, Set
 
 from securesystemslib.ecdsa_keys import verify_signature as verify_ecdsa_signature
 from securesystemslib.ed25519_keys import verify_signature as verify_ed25519_signature
@@ -8,11 +8,10 @@ from securesystemslib.rsa_keys import verify_rsa_signature
 
 from .common import (
     DateTime,
+    Filepath,
     Hashes,
     KeyID,
     Length,
-    RolenameToHashes,
-    RolenameToVersion,
     SpecVersion,
     Threshold,
     Version,
@@ -31,6 +30,14 @@ class Signed:
     expires: DateTime
     spec_version: SpecVersion
     version: Version
+
+    def __gt__(self, other: Any) -> bool:
+        if not isinstance(other, Signed):
+            raise NotImplementedError
+        return self.version > other.version
+
+    def __str__(self):
+        return f"{self.__class__.__name__}({self.version})"
 
 
 @dataclass
@@ -142,15 +149,31 @@ class Root(Signed):
 
 
 @dataclass
+class TimeSnap:
+    version: Version
+    hashes: Optional[Hashes] = None
+    length: Optional[Length] = None
+
+    def __gt__(self, other: Any) -> bool:
+        if not isinstance(other, TimeSnap):
+            raise NotImplementedError
+        return self.version > other.version
+
+    def __str__(self):
+        return f"{self.__class__.__name__}({self.version})"
+
+
+TimeSnaps = Dict[Filepath, TimeSnap]
+
+
+@dataclass
 class Timestamp(Signed):
-    hashes: Hashes
-    length: Length
+    snapshot: TimeSnap
 
 
 @dataclass
 class Snapshot(Signed):
-    hashes: RolenameToHashes
-    versions: RolenameToVersion
+    targets: TimeSnaps
 
 
 @dataclass
