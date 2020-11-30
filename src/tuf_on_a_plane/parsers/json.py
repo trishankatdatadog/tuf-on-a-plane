@@ -34,6 +34,8 @@ from ..models.metadata import (
     Signatures,
     Signed,
     Snapshot,
+    TargetFile,
+    TargetFiles,
     Targets,
     Threshold,
     ThresholdOfPublicKeys,
@@ -134,17 +136,8 @@ def key(_key: Json) -> PublicKey:
 def keys(_keys: Json) -> PublicKeys:
     check_dict(_keys)
 
-    public_keys = {}
-
-    while True:
-        try:
-            keyid, _key = _keys.popitem()
-            public_key = key(_key)
-            public_keys[keyid] = public_key
-        except KeyError:
-            break
-
-    return public_keys
+    # NOTE: we iterate in order of appearance to preserve it in the new dict.
+    return {keyid: key(_key) for keyid, _key in _keys.items()}
 
 
 def check_list(_list: Any) -> None:
@@ -203,7 +196,7 @@ def expires(_expires: str) -> DateTime:
     return DateTime.strptime(_expires, "%Y-%m-%dT%H:%M:%S%z")
 
 
-def root(_signed: Json) -> Root:
+def footer(_signed: Json) -> Tuple[SpecVersion, Version]:
     check_dict(_signed)
 
     k, version = _signed.popitem()
@@ -213,6 +206,12 @@ def root(_signed: Json) -> Root:
     k, _spec_version = _signed.popitem()
     check_key(k, "spec_version")
     _spec_version = spec_version(_spec_version)
+
+    return _spec_version, version
+
+
+def root(_signed: Json) -> Root:
+    _spec_version, version = footer(_signed)
 
     k, _root_roles = _signed.popitem()
     check_key(k, "roles")
@@ -271,12 +270,8 @@ def meta(_meta: Json) -> TimeSnaps:
     check_dict(_meta)
     timesnaps = {}
 
-    while True:
-        try:
-            filename, timesnap = _meta.popitem()
-        except KeyError:
-            break
-
+    # NOTE: we iterate in order of appearance to preserve it in the new dict.
+    for filename, timesnap in _meta.items():
         check_str(filename)
         if not METADATA_FILENAME_PATTERN.fullmatch(filename):
             raise ValueError(f"{filename} is not a valid targets filename")
@@ -308,16 +303,23 @@ def meta(_meta: Json) -> TimeSnaps:
     return timesnaps
 
 
+def header(_signed: Json, expected_type: str) -> DateTime:
+    k, _expires = _signed.popitem()
+    check_key(k, "expires")
+    _expires = expires(_expires)
+
+    k, _type = _signed.popitem()
+    check_key(k, "_type")
+    if _type != expected_type:
+        raise ValueError(f"{_signed} has unexpected type {_type} != {expected_type}")
+
+    check_empty(_signed)
+
+    return _expires
+
+
 def timestamp(_signed: Json) -> Timestamp:
-    check_dict(_signed)
-
-    k, version = _signed.popitem()
-    check_key(k, "version")
-    version = Version(version)
-
-    k, _spec_version = _signed.popitem()
-    check_key(k, "spec_version")
-    _spec_version = spec_version(_spec_version)
+    _spec_version, version = footer(_signed)
 
     k, _meta = _signed.popitem()
     check_key(k, "meta")
@@ -328,16 +330,8 @@ def timestamp(_signed: Json) -> Timestamp:
     check_key(k, "snapshot.json")
     check_empty(timesnaps)
 
-    k, _expires = _signed.popitem()
-    check_key(k, "expires")
-    _expires = expires(_expires)
+    _expires = header(_signed, "timestamp")
 
-    k, _type = _signed.popitem()
-    check_key(k, "_type")
-    if _type != "timestamp":
-        raise ValueError(f"{_signed} has unexpected type {_type}")
-
-    check_empty(_signed)
     return Timestamp(
         _expires,
         _spec_version,
@@ -347,31 +341,15 @@ def timestamp(_signed: Json) -> Timestamp:
 
 
 def snapshot(_signed: Json) -> Snapshot:
-    check_dict(_signed)
-
-    k, version = _signed.popitem()
-    check_key(k, "version")
-    version = Version(version)
-
-    k, _spec_version = _signed.popitem()
-    check_key(k, "spec_version")
-    _spec_version = spec_version(_spec_version)
+    _spec_version, version = footer(_signed)
 
     k, _meta = _signed.popitem()
     check_key(k, "meta")
     timesnaps = meta(_meta)
     check_dict(timesnaps)
 
-    k, _expires = _signed.popitem()
-    check_key(k, "expires")
-    _expires = expires(_expires)
+    _expires = header(_signed, "snapshot")
 
-    k, _type = _signed.popitem()
-    check_key(k, "_type")
-    if _type != "snapshot":
-        raise ValueError(f"{_signed} has unexpected type {_type}")
-
-    check_empty(_signed)
     return Snapshot(
         _expires,
         _spec_version,
@@ -380,8 +358,68 @@ def snapshot(_signed: Json) -> Snapshot:
     )
 
 
+def target_file(_target_file: Json) -> TargetFile:
+    check_dict(_target_file)
+
+    k, length = _target_file.popitem()
+    check_key(k, "length")
+    length = Length(length)
+
+    k, _hashes = _target_file.popitem()
+    check_key(k, "hashes")
+    _hashes = hashes(_hashes)
+
+    try:
+        k, custom = _target_file.popitem()
+    except KeyError:
+        custom = None
+    else:
+        check_dict(custom)
+        check_empty(_target_file)
+
+    return TargetFile(_hashes, length, custom)
+
+
+def target_files(_target_files: Json) -> TargetFiles:
+    check_dict(_target_files)
+
+    # NOTE: we iterate in order of appearance to preserve it in the new dict.
+    return {path: target_file(file) for path, file in _target_files.items()}
+
+
+# FIXME: I don't see a good way to reuse header/footer here, but we can push
+# that to the future.
 def targets(_signed: Json) -> Targets:
-    raise NotImplementedError
+    check_dict(_signed)
+
+    k, version = _signed.popitem()
+    check_key(k, "version")
+    version = Version(version)
+
+    k, _target_files = _signed.popitem()
+    check_key(k, "targets")
+    _target_files = target_files(_target_files)
+
+    k, _spec_version = _signed.popitem()
+    check_key(k, "spec_version")
+    _spec_version = spec_version(_spec_version)
+
+    k, _expires = _signed.popitem()
+    check_key(k, "expires")
+    _expires = expires(_expires)
+
+    k, delegations = _signed.popitem()
+    check_key(k, "delegations")
+    # TODO: parse delegations.
+    check_dict(delegations)
+
+    k, _type = _signed.popitem()
+    check_key(k, "_type")
+    if _type != "targets":
+        raise ValueError(f"{_signed} has unexpected type {_type} != targets")
+
+    check_empty(_signed)
+    return Targets(_expires, _spec_version, version, _target_files)
 
 
 def signed(_signed: Json) -> Signed:

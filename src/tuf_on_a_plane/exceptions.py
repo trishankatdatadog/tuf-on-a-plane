@@ -9,7 +9,7 @@ class DownloadError(Error):
     pass
 
 
-class NotFoundError(DownloadError):
+class DownloadNotFoundError(DownloadError):
     pass
 
 
@@ -21,6 +21,10 @@ class RepositoryError(Error):
 
 
 class NoConsistentSnapshotsError(RepositoryError):
+    pass
+
+
+class TargetNotFoundError(RepositoryError):
     pass
 
 
