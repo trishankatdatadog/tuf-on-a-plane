@@ -11,6 +11,7 @@ from .exceptions import (
     RollbackAttack,
 )
 from .models.common import (
+    Comparable,
     Filepath,
     Rolename,
     Url,
@@ -49,9 +50,7 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         if signed.expires <= self.config.NOW:
             raise FreezeAttack(f"{signed}: {signed.expires} <= {self.config.NOW}")
 
-    # FIXME: maybe we can write a Comparable interface, but I'm too tired right
-    # now: https://github.com/python/typing/issues/59
-    def __check_rollback(self, prev: Signed, curr: Signed) -> None:
+    def __check_rollback(self, prev: Comparable, curr: Comparable) -> None:
         if prev > curr:
             raise RollbackAttack(f"{prev} > {curr}")
 
@@ -113,7 +112,8 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         """5.1. Update the root metadata file."""
         # 5.1.1. Let N denote the version number of the trusted root metadata
         # file.
-        curr_root = self.__root
+        prev_root = self.__root
+        curr_root = prev_root
         n = curr_root.version
 
         # 5.1.8. Repeat steps 5.1.1 to 5.1.8.
@@ -144,32 +144,35 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
             # file.
             curr_root = metadata.signed
 
-        # 5.1.11. Set whether consistent snapshots are used as per the trusted
-        # root metadata file (see Section 4.3).
-        # NOTE: We violate the spec in checking this *before* deleting local
-        # timestamp and/or snapshot metadata, which I think is reasonable.
-        if not curr_root.consistent_snapshot:
-            raise NoConsistentSnapshotsError
-
         # 5.1.9. Check for a freeze attack.
         self.__check_expiry(curr_root)
 
-        # 5.1.10. If the timestamp and / or snapshot keys have been rotated,
-        # then delete the trusted timestamp and snapshot metadata files.
-        if (
-            self.__root.timestamp != curr_root.timestamp
-            or self.__root.snapshot != curr_root.snapshot
-        ):
-            self.rm_file(self.__local_metadata_filename("snapshot"), ignore_errors=True)
-            self.rm_file(
-                self.__local_metadata_filename("timestamp"), ignore_errors=True
-            )
+        if prev_root < curr_root:
+            # 5.1.11. Set whether consistent snapshots are used as per the
+            # trusted root metadata file.
+            # NOTE: We violate the spec in checking this *before* deleting local
+            # timestamp and/or snapshot metadata, which I think is reasonable.
+            if not curr_root.consistent_snapshot:
+                raise NoConsistentSnapshotsError
 
-        # 5.1.7. Persist root metadata.
-        # NOTE: We violate the spec in persisting only *after* checking
-        # everything, which I think is reasonable.
-        self.mv_file(tmp_file, self.__local_metadata_filename("root"))
-        self.__root = curr_root
+            # 5.1.10. If the timestamp and / or snapshot keys have been rotated,
+            # then delete the trusted timestamp and snapshot metadata files.
+            if (
+                self.__root.timestamp != curr_root.timestamp
+                or self.__root.snapshot != curr_root.snapshot
+            ):
+                self.rm_file(
+                    self.__local_metadata_filename("snapshot"), ignore_errors=True
+                )
+                self.rm_file(
+                    self.__local_metadata_filename("timestamp"), ignore_errors=True
+                )
+
+            # 5.1.7. Persist root metadata.
+            # NOTE: We violate the spec in persisting only *after* checking
+            # everything, which I think is reasonable.
+            self.mv_file(tmp_file, self.__local_metadata_filename("root"))
+            self.__root = curr_root
 
     def __update_timestamp(self) -> None:
         """5.2. Download the timestamp metadata file."""
@@ -192,13 +195,9 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
                 TimeSnap, prev_metadata.signed.snapshot
             )
             self.__check_rollback(prev_metadata.signed, curr_metadata.signed)
-
-            # FIXME: ideally, self.__check_rollback() takes Comparable so that
-            # we can reuse it.
-            if prev_metadata.signed.snapshot > curr_metadata.signed.snapshot:
-                raise RollbackAttack(
-                    f"{prev_metadata.signed.snapshot} > {curr_metadata.signed.snapshot}"
-                )
+            self.__check_rollback(
+                prev_metadata.signed.snapshot, curr_metadata.signed.snapshot
+            )
 
         # 5.2.3. Check for a freeze attack.
         self.__check_expiry(curr_metadata.signed)
