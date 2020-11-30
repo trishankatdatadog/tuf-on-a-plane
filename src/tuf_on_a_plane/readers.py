@@ -7,6 +7,7 @@ from .models.common import (
     Dir,
     Filepath,
     Hashes,
+    Length,
     Rolename,
 )
 from .models.metadata import Metadata
@@ -17,7 +18,7 @@ class ReaderMixIn:
     """A mixin to separate TUF metadata details such as filename extension and
     file format."""
 
-    def cmp_file(
+    def check_hashes(
         self,
         path: Filepath,
         expected: Hashes,
@@ -26,13 +27,22 @@ class ReaderMixIn:
         observed = get_file_hashes(path, hash_algorithms=hash_algorithms)
         return observed == expected
 
+    def check_length(self, path: Filepath, expected: Length) -> bool:
+        # NOTE: check only upper bound, because we don't always know the exact
+        # length.
+        observed = os.path.getsize(path)
+        return Length(observed) <= expected
+
     def file_exists(self, path: Filepath) -> bool:
         return os.path.isfile(path)
+
+    def join_path(self, path: Filepath, *paths: Filepath) -> Filepath:
+        return os.path.join(path, *paths)
 
     def local_metadata_filename(
         self, metadata_cache: Dir, rolename: Rolename
     ) -> Filepath:
-        return os.path.join(metadata_cache, self.role_filename(rolename))
+        return self.join_path(metadata_cache, self.role_filename(rolename))
 
     def role_filename(self, rolename: Rolename) -> Filepath:
         """Return the expected filename based on the rolename."""

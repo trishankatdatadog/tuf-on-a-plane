@@ -5,14 +5,15 @@ import httpx
 from . import __version__
 from .config import Config
 from .exceptions import (
+    DownloadNotFoundError,
     EndlessDataAttack,
-    NotFoundError,
     SlowRetrievalAttack,
 )
 from .models.common import (
     DateTime,
     Filepath,
     Length,
+    Speed,
     Url,
 )
 
@@ -52,51 +53,61 @@ class HTTPXDownloaderMixIn(DownloaderMixIn):
     def close_downloader(self) -> None:
         self.__client.close()
 
+    def __check_length(self, path: Url, observed: Length, expected: Length) -> None:
+        if observed > expected:
+            raise EndlessDataAttack(f"{observed} > {expected} bytes on {path}")
+
+    def __check_not_found(self, path: Url, response: httpx.Response) -> None:
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code in {403, 404}:
+                raise DownloadNotFoundError(path)
+            raise
+
+    def __check_speed(self, path: Url, observed: Speed, expected: Speed) -> None:
+        if observed < expected:
+            raise SlowRetrievalAttack(f"{observed} < {expected} bytes/sec on {path}")
+
     def download(self, path: Url, expected_length: Length, config: Config) -> Filepath:
         temp_fd, temp_path = tempfile.mkstemp(dir=config.temp_dir)
 
         with open(temp_fd, "wb") as temp_file:
             with self.__client.stream("GET", path) as response:
-                try:
-                    response.raise_for_status()
-                except httpx.HTTPStatusError as e:
-                    if e.response.status_code in {403, 404}:
-                        raise NotFoundError(path)
-                    raise
-
+                self.__check_not_found(path, response)
                 alleged_length = response.headers.get(
                     "Content-Length", expected_length.value
                 )
-                if expected_length < alleged_length:
-                    raise EndlessDataAttack(
-                        f"{alleged_length} > {expected_length} bytes on {path}"
-                    )
+                self.__check_length(path, alleged_length, expected_length)
 
-                prev_length, prev_time = 0, DateTime.now()
                 try:
+                    prev_downloaded, prev_time = 0, DateTime.now()
+                    written_bytes = 0
+
                     for chunk in response.iter_bytes():
-                        curr_length, curr_time = (
+                        curr_downloaded, curr_time = (
                             response.num_bytes_downloaded,
                             DateTime.now(),
                         )
-                        length_diff = curr_length - prev_length
-                        time_diff = (curr_time - prev_time).total_seconds()
-                        prev_length, prev_time = curr_length, curr_time
-                        chunk_speed = length_diff // time_diff
+                        self.__check_length(path, curr_downloaded, expected_length)
+                        downloaded_length = curr_downloaded - prev_downloaded
 
-                        if (
-                            length_diff
-                            and chunk_speed < config.SLOW_RETRIEVAL_THRESHOLD
-                        ):
-                            raise SlowRetrievalAttack(
-                                f"{chunk_speed} < {config.SLOW_RETRIEVAL_THRESHOLD} bytes/sec on {path}"
-                            )
-                        if expected_length < curr_length:
-                            raise EndlessDataAttack(
-                                f"{curr_length} > {expected_length} bytes on {path}"
+                        if downloaded_length:
+                            time_diff = (curr_time - prev_time).total_seconds()
+                            chunk_speed = Speed(downloaded_length / time_diff)
+                            self.__check_speed(
+                                path, chunk_speed, config.SLOW_RETRIEVAL_THRESHOLD
                             )
 
-                        temp_file.write(chunk)
+                        chunk_length = len(chunk)
+                        if chunk_length:
+                            written_bytes += chunk_length
+                            written_length = Length(written_bytes)
+                            self.__check_length(path, curr_downloaded, written_length)
+                            self.__check_length(path, written_length, expected_length)
+                            temp_file.write(chunk)
+
+                        prev_downloaded, prev_time = curr_downloaded, DateTime.now()
                 except httpx.TimeoutException:
                     raise SlowRetrievalAttack(f"timeout on {path}")
 

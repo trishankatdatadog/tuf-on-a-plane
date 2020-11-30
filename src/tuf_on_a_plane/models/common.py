@@ -71,7 +71,7 @@ class Natural(Comparable):
 
     @value.setter
     def value(self, value: Any) -> None:
-        value = int(value)
+        value = round(float(value))
         if value < 0:
             raise ValueError(f"{value} < 0")
         self.__value = value
@@ -81,13 +81,20 @@ Speed = Natural
 
 
 class Positive(Natural):
+    # FIXME: This is actually implicitly defined by @total_ordering, but mypy
+    # does not pick it up: https://github.com/python/mypy/issues/4610
+    def __le__(self, other: Any) -> bool:
+        if not isinstance(other, self.__class__):
+            other = self.__class__(other)
+        return self.value <= other.value
+
     @property
     def value(self) -> int:
         return self.__value
 
     @value.setter
     def value(self, value: Any) -> None:
-        value = int(value)
+        value = round(float(value))
         if value <= 0:
             raise ValueError(f"{value} <= 0")
         self.__value = value

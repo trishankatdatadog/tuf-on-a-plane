@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import os
 import shutil
 import tempfile
 
@@ -27,13 +28,13 @@ class Config:
 
     # Maximum number of root rotations.
     MAX_ROOT_ROTATIONS = 2 ** 5
-    # 16K ought to be more than enough for everyone ;)
-    MAX_ROOT_LENGTH: Length = Length(2 ** 14)
+    MAX_ROOT_LENGTH: Length = Length(2 ** 15)
 
     # Based on PEP 458:
     # https://www.python.org/dev/peps/pep-0458/#metadata-scalability
     MAX_SNAPSHOT_LENGTH: Length = Length(2 ** 17)
-    MAX_TIMESTAMP_LENGTH: Length = Length(2 ** 10)
+    MAX_TARGETS_LENGTH: Length = Length(2 ** 21)
+    MAX_TIMESTAMP_LENGTH: Length = Length(2 ** 11)
 
     # A fixed notion of "now" with some slack time:
     # https://github.com/theupdateframework/specification/pull/118
@@ -41,7 +42,8 @@ class Config:
 
     # Minimum number of bytes per second that must be downloaded per second
     # *on average* to prevent raising a slow retrieval attack.
-    SLOW_RETRIEVAL_THRESHOLD: Speed = Speed(2 ** 10)
+    SLOW_RETRIEVAL_THRESHOLD: Speed = Speed(2 ** 9)
 
     def close(self) -> None:
-        shutil.rmtree(self.temp_dir)
+        if os.path.isdir(self.temp_dir):
+            shutil.rmtree(self.temp_dir)

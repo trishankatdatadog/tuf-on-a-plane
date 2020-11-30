@@ -1,10 +1,11 @@
+import os
 import shutil
 import tempfile
 
 from tuf_on_a_plane.repository import Config, JSONRepository
 
 
-def test_main_succeeds():
+def test_e2e_succeeds():
     orig_metadata_cache = "tests/data/repository/metadata"
 
     temp_metadata_cache = tempfile.TemporaryDirectory()
@@ -20,9 +21,15 @@ def test_main_succeeds():
     )
 
     try:
-        JSONRepository(c)
-    except NotImplementedError:
-        raise
+        r = JSONRepository(c)
+
+        # Exists in the top-level targets role.
+        f = r.get("in-toto-metadata/root.layout")
+        assert os.path.exists(f)
+
+        # Exists in delegated targets role.
+        f = r.get("simple/index.html")
+        assert os.path.exists(f)
     finally:
         temp_metadata_cache.cleanup()
         temp_targets_cache.cleanup()
