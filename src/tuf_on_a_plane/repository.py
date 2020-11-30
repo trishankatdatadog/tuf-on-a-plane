@@ -211,11 +211,12 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         tmp_file = self.download(path, length, self.config)
 
         # 5.3.1. Check against timestamp role's snapshot hash.
-        if self.__timestamp.snapshot.hashes:
-            if not self.cmp_file(tmp_file, self.__timestamp.snapshot.hashes):
-                raise MixAndMatchAttack(
-                    f"{self.__timestamp.snapshot.hashes} does not match {path}"
-                )
+        if self.__timestamp.snapshot.hashes and not self.cmp_file(
+            tmp_file, self.__timestamp.snapshot.hashes
+        ):
+            raise MixAndMatchAttack(
+                f"{self.__timestamp.snapshot.hashes} does not match {path}"
+            )
 
         # 5.3.2. Check for an arbitrary software attack.
         curr_metadata = self.read_from_file(tmp_file)
@@ -233,6 +234,7 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         if self.file_exists(prev_filename):
             prev_metadata = self.read_from_file(prev_filename)
             prev_metadata.signed = cast(Snapshot, prev_metadata.signed)
+
             for filename, prev_timesnap in prev_metadata.signed.targets.items():
                 curr_timesnap = curr_metadata.signed.targets.get(filename)
                 if not curr_timesnap:
