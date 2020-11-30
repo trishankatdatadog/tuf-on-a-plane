@@ -43,6 +43,10 @@ class FreezeAttack(Attack):
     pass
 
 
+class MixAndMatchAttack(Attack):
+    pass
+
+
 class RollbackAttack(Attack):
     pass
 

@@ -44,4 +44,4 @@ source = ["tuf_on_a_plane"]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 78
+fail_under = 80
