@@ -25,16 +25,19 @@ class Config:
     # Where to store temporary files.
     temp_dir = tempfile.mkdtemp()
 
-    # A fixed notion of "now" with some slack time:
-    # https://github.com/theupdateframework/specification/pull/118
-    NOW: DateTime = DateTime.laggingnow(minutes=5)
-
     # Maximum number of root rotations.
     MAX_ROOT_ROTATIONS = 2 ** 5
     # 16K ought to be more than enough for everyone ;)
     MAX_ROOT_LENGTH: Length = Length(2 ** 14)
 
+    # Based on PEP 458:
+    # https://www.python.org/dev/peps/pep-0458/#metadata-scalability
+    MAX_SNAPSHOT_LENGTH: Length = Length(2 ** 17)
     MAX_TIMESTAMP_LENGTH: Length = Length(2 ** 10)
+
+    # A fixed notion of "now" with some slack time:
+    # https://github.com/theupdateframework/specification/pull/118
+    NOW: DateTime = DateTime.laggingnow(minutes=5)
 
     # Minimum number of bytes per second that must be downloaded per second
     # *on average* to prevent raising a slow retrieval attack.

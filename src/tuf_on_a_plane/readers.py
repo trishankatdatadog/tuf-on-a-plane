@@ -1,10 +1,12 @@
 import os
+from typing import Iterable
 
-from securesystemslib.util import load_json_file
+from securesystemslib.util import get_file_hashes, load_json_file
 
 from .models.common import (
     Dir,
     Filepath,
+    Hashes,
     Rolename,
 )
 from .models.metadata import Metadata
@@ -14,6 +16,15 @@ from .parsers.json import JSONParser
 class ReaderMixIn:
     """A mixin to separate TUF metadata details such as filename extension and
     file format."""
+
+    def cmp_file(
+        self,
+        path: Filepath,
+        expected: Hashes,
+        hash_algorithms: Iterable[str] = ("sha256", "sha512"),
+    ) -> Hashes:
+        observed = get_file_hashes(path, hash_algorithms=hash_algorithms)
+        return observed == expected
 
     def file_exists(self, path: Filepath) -> bool:
         return os.path.isfile(path)

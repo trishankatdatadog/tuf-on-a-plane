@@ -6,6 +6,7 @@ from .download import DownloaderMixIn, HTTPXDownloaderMixIn
 from .exceptions import (
     ArbitrarySoftwareAttack,
     FreezeAttack,
+    MixAndMatchAttack,
     NoConsistentSnapshotsError,
     NotFoundError,
     RollbackAttack,
@@ -21,8 +22,8 @@ from .models.metadata import (
     Metadata,
     Root,
     Signed,
+    Snapshot,
     ThresholdOfPublicKeys,
-    TimeSnap,
     Timestamp,
 )
 from .readers import JSONReaderMixIn, ReaderMixIn
@@ -183,7 +184,6 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         # 5.2.1. Check for an arbitrary software attack.
         curr_metadata = self.read_from_file(tmp_file)
         curr_metadata.signed = cast(Timestamp, curr_metadata.signed)
-        curr_metadata.signed.snapshot = cast(TimeSnap, curr_metadata.signed.snapshot)
         self.__check_signatures(self.__root.timestamp, curr_metadata)
 
         # 5.2.2. Check for a rollback attack.
@@ -191,9 +191,6 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         if self.file_exists(prev_filename):
             prev_metadata = self.read_from_file(prev_filename)
             prev_metadata.signed = cast(Timestamp, prev_metadata.signed)
-            prev_metadata.signed.snapshot = cast(
-                TimeSnap, prev_metadata.signed.snapshot
-            )
             self.__check_rollback(prev_metadata.signed, curr_metadata.signed)
             self.__check_rollback(
                 prev_metadata.signed.snapshot, curr_metadata.signed.snapshot
@@ -208,7 +205,50 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
 
     def __update_snapshot(self) -> None:
         """5.3. Download snapshot metadata file."""
-        raise NotImplementedError
+        name = self.role_filename("snapshot")
+        path = self.__remote_metadata_path(name)
+        length = self.__timestamp.snapshot.length or self.config.MAX_SNAPSHOT_LENGTH
+        tmp_file = self.download(path, length, self.config)
+
+        # 5.3.1. Check against timestamp role's snapshot hash.
+        if self.__timestamp.snapshot.hashes and not self.cmp_file(
+            tmp_file, self.__timestamp.snapshot.hashes
+        ):
+            raise MixAndMatchAttack(
+                f"{self.__timestamp.snapshot.hashes} does not match {path}"
+            )
+
+        # 5.3.2. Check for an arbitrary software attack.
+        curr_metadata = self.read_from_file(tmp_file)
+        curr_metadata.signed = cast(Snapshot, curr_metadata.signed)
+        self.__check_signatures(self.__root.snapshot, curr_metadata)
+
+        # 5.3.3. Check against timestamp role's snapshot version.
+        if curr_metadata.signed.version != self.__timestamp.snapshot.version:
+            raise MixAndMatchAttack(
+                f"{curr_metadata.signed.version} != {self.__timestamp.snapshot.version}"
+            )
+
+        # 5.3.4. Check for a rollback attack.
+        prev_filename = self.__local_metadata_filename("snapshot")
+        if self.file_exists(prev_filename):
+            prev_metadata = self.read_from_file(prev_filename)
+            prev_metadata.signed = cast(Snapshot, prev_metadata.signed)
+
+            for filename, prev_timesnap in prev_metadata.signed.targets.items():
+                curr_timesnap = curr_metadata.signed.targets.get(filename)
+                if not curr_timesnap:
+                    raise RollbackAttack(
+                        f"{filename} was in {prev_metadata.signed.version} but missing in {curr_metadata.signed.version}"
+                    )
+                self.__check_rollback(prev_timesnap, curr_timesnap)
+
+        # 5.3.5. Check for a freeze attack.
+        self.__check_expiry(curr_metadata.signed)
+
+        # 5.3.6. Persist snapshot metadata.
+        self.mv_file(tmp_file, self.__local_metadata_filename("snapshot"))
+        self.__snapshot = curr_metadata.signed
 
     def __update_targets(self) -> None:
         """5.4. Download the top-level targets metadata file."""

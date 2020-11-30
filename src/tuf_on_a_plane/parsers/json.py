@@ -323,6 +323,7 @@ def timestamp(_signed: Json) -> Timestamp:
     check_key(k, "meta")
     timesnaps = meta(_meta)
     check_dict(timesnaps)
+
     k, timesnap = timesnaps.popitem()
     check_key(k, "snapshot.json")
     check_empty(timesnaps)
@@ -346,7 +347,37 @@ def timestamp(_signed: Json) -> Timestamp:
 
 
 def snapshot(_signed: Json) -> Snapshot:
-    raise NotImplementedError
+    check_dict(_signed)
+
+    k, version = _signed.popitem()
+    check_key(k, "version")
+    version = Version(version)
+
+    k, _spec_version = _signed.popitem()
+    check_key(k, "spec_version")
+    _spec_version = spec_version(_spec_version)
+
+    k, _meta = _signed.popitem()
+    check_key(k, "meta")
+    timesnaps = meta(_meta)
+    check_dict(timesnaps)
+
+    k, _expires = _signed.popitem()
+    check_key(k, "expires")
+    _expires = expires(_expires)
+
+    k, _type = _signed.popitem()
+    check_key(k, "_type")
+    if _type != "snapshot":
+        raise ValueError(f"{_signed} has unexpected type {_type}")
+
+    check_empty(_signed)
+    return Snapshot(
+        _expires,
+        _spec_version,
+        version,
+        timesnaps,
+    )
 
 
 def targets(_signed: Json) -> Targets:
