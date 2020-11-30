@@ -1,5 +1,6 @@
 """A recursive descent parser for JSON TUF metadata."""
 
+import re
 from typing import (
     Any,
     List,
@@ -13,8 +14,10 @@ from securesystemslib.formats import encode_canonical
 from . import Parser
 from ..models.common import (
     DateTime,
+    Hashes,
     Json,
     KeyID,
+    Length,
     SpecVersion,
     Version,
 )
@@ -34,6 +37,8 @@ from ..models.metadata import (
     Targets,
     Threshold,
     ThresholdOfPublicKeys,
+    TimeSnap,
+    TimeSnaps,
     Timestamp,
 )
 
@@ -248,8 +253,96 @@ def root(_signed: Json) -> Root:
     )
 
 
+METADATA_FILENAME_PATTERN = re.compile(r"^[0-9a-z\-]+\.json$")
+
+
+def hashes(_hashes: Json) -> Hashes:
+    check_dict(_hashes)
+
+    # We don't do much here... for now.
+    for key, value in _hashes.items():
+        check_str(key)
+        check_str(value)
+
+    return _hashes
+
+
+def meta(_meta: Json) -> TimeSnaps:
+    check_dict(_meta)
+    timesnaps = {}
+
+    while True:
+        try:
+            filename, timesnap = _meta.popitem()
+        except KeyError:
+            break
+
+        check_str(filename)
+        if not METADATA_FILENAME_PATTERN.fullmatch(filename):
+            raise ValueError(f"{filename} is not a valid targets filename")
+
+        check_dict(timesnap)
+        k, version = timesnap.popitem()
+        check_key(k, "version")
+        version = Version(version)
+
+        try:
+            k, length = timesnap.popitem()
+        except KeyError:
+            length = None
+        else:
+            check_key(k, "length")
+            length = Length(length)
+
+        try:
+            k, _hashes = timesnap.popitem()
+        except KeyError:
+            _hashes = None
+        else:
+            check_key(k, "hashes")
+            _hashes = hashes(_hashes)
+            check_empty(timesnap)
+
+        timesnaps[filename] = TimeSnap(version, _hashes, length)
+
+    return timesnaps
+
+
 def timestamp(_signed: Json) -> Timestamp:
-    raise NotImplementedError
+    check_dict(_signed)
+
+    k, version = _signed.popitem()
+    check_key(k, "version")
+    version = Version(version)
+
+    k, _spec_version = _signed.popitem()
+    check_key(k, "spec_version")
+    _spec_version = spec_version(_spec_version)
+
+    k, _meta = _signed.popitem()
+    check_key(k, "meta")
+    timesnaps = meta(_meta)
+    check_dict(timesnaps)
+    k, timesnap = timesnaps.popitem()
+    check_key(k, "snapshot.json")
+    check_empty(timesnaps)
+
+    k, _expires = _signed.popitem()
+    check_key(k, "expires")
+    _expires = expires(_expires)
+
+    k, _type = _signed.popitem()
+    check_key(k, "_type")
+    if _type != "timestamp":
+        raise ValueError(f"{_signed} has unexpected type {_type}")
+
+    check_empty(_signed)
+    return Timestamp(
+        _expires,
+        _spec_version,
+        version,
+        timesnap,
+    )
 
 
 def snapshot(_signed: Json) -> Snapshot:

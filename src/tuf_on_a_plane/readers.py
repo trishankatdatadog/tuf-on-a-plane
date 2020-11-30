@@ -1,6 +1,9 @@
+import os
+
 from securesystemslib.util import load_json_file
 
 from .models.common import (
+    Dir,
     Filepath,
     Rolename,
 )
@@ -11,6 +14,14 @@ from .parsers.json import JSONParser
 class ReaderMixIn:
     """A mixin to separate TUF metadata details such as filename extension and
     file format."""
+
+    def file_exists(self, path: Filepath) -> bool:
+        return os.path.isfile(path)
+
+    def local_metadata_filename(
+        self, metadata_cache: Dir, rolename: Rolename
+    ) -> Filepath:
+        return os.path.join(metadata_cache, self.role_filename(rolename))
 
     def role_filename(self, rolename: Rolename) -> Filepath:
         """Return the expected filename based on the rolename."""

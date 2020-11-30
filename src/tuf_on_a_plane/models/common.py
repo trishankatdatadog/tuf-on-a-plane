@@ -27,7 +27,15 @@ class DateTime(datetime):
 
 
 @total_ordering
-class Natural:
+class Comparable:
+    def __eq__(self, other: Any) -> bool:
+        raise NotImplementedError
+
+    def __lt__(self, other: Any) -> bool:
+        raise NotImplementedError
+
+
+class Natural(Comparable):
     def __init__(self, value: Any):
         self.value = value
 
@@ -92,10 +100,6 @@ Threshold = Positive
 class Version(Positive):
     def __str__(self):
         return f"v{self.value}"
-
-
-RolenameToHashes = Dict[Rolename, Hashes]
-RolenameToVersion = Dict[Rolename, Version]
 
 
 class SpecVersion:
