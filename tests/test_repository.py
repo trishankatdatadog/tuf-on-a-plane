@@ -30,6 +30,8 @@ def test_e2e_succeeds():
         # Exists in delegated targets role.
         f = r.get("simple/index.html")
         assert os.path.exists(f)
+
     finally:
+        r.close()
         temp_metadata_cache.cleanup()
         temp_targets_cache.cleanup()

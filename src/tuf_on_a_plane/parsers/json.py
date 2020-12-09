@@ -3,6 +3,7 @@
 import re
 from typing import (
     Any,
+    Callable,
     List,
     Sized,
     Tuple,
@@ -196,22 +197,45 @@ def expires(_expires: str) -> DateTime:
     return DateTime.strptime(_expires, "%Y-%m-%dT%H:%M:%S%z")
 
 
-def footer(_signed: Json) -> Tuple[SpecVersion, Version]:
+def footer(
+    _signed: Json, callback: Callable[[Json], Any] = lambda x: None
+) -> Tuple[SpecVersion, Any, Version]:
     check_dict(_signed)
 
     k, version = _signed.popitem()
     check_key(k, "version")
     version = Version(version)
 
+    result = callback(_signed)
+
     k, _spec_version = _signed.popitem()
     check_key(k, "spec_version")
     _spec_version = spec_version(_spec_version)
 
-    return _spec_version, version
+    return _spec_version, result, version
+
+
+def header(
+    _signed: Json, expected_type: str, callback: Callable[[Json], Any] = lambda x: None
+) -> Tuple[Any, DateTime]:
+    k, _expires = _signed.popitem()
+    check_key(k, "expires")
+    _expires = expires(_expires)
+
+    result = callback(_signed)
+
+    k, _type = _signed.popitem()
+    check_key(k, "_type")
+    if _type != expected_type:
+        raise ValueError(f"{_signed} has unexpected type {_type} != {expected_type}")
+
+    check_empty(_signed)
+
+    return result, _expires
 
 
 def root(_signed: Json) -> Root:
-    _spec_version, version = footer(_signed)
+    _spec_version, _, version = footer(_signed)
 
     k, _root_roles = _signed.popitem()
     check_key(k, "roles")
@@ -223,21 +247,16 @@ def root(_signed: Json) -> Root:
     # TODO: is it a big deal that we do not check whether all keys listed are used?
     _root, _snapshot, _targets, _timestamp = root_roles(_root_roles, _keys)
 
-    k, _expires = _signed.popitem()
-    check_key(k, "expires")
-    _expires = expires(_expires)
+    def callback(_signed: Json) -> bool:
+        k, consistent_snapshot = _signed.popitem()
+        check_key(k, "consistent_snapshot")
+        if not isinstance(consistent_snapshot, bool):
+            raise TypeError(
+                f"{_signed} has non-boolean consistent_snapshot: {consistent_snapshot}"
+            )
+        return consistent_snapshot
 
-    k, consistent_snapshot = _signed.popitem()
-    check_key(k, "consistent_snapshot")
-    if not isinstance(consistent_snapshot, bool):
-        raise TypeError(
-            f"{_signed} has non-boolean consistent_snapshot: {consistent_snapshot}"
-        )
-
-    k, _type = _signed.popitem()
-    check_key(k, "_type")
-    if _type != "root":
-        raise ValueError(f"{_signed} has unexpected type {_type}")
+    consistent_snapshot, _expires = header(_signed, "root", callback)
 
     check_empty(_signed)
     return Root(
@@ -303,23 +322,8 @@ def meta(_meta: Json) -> TimeSnaps:
     return timesnaps
 
 
-def header(_signed: Json, expected_type: str) -> DateTime:
-    k, _expires = _signed.popitem()
-    check_key(k, "expires")
-    _expires = expires(_expires)
-
-    k, _type = _signed.popitem()
-    check_key(k, "_type")
-    if _type != expected_type:
-        raise ValueError(f"{_signed} has unexpected type {_type} != {expected_type}")
-
-    check_empty(_signed)
-
-    return _expires
-
-
 def timestamp(_signed: Json) -> Timestamp:
-    _spec_version, version = footer(_signed)
+    _spec_version, _, version = footer(_signed)
 
     k, _meta = _signed.popitem()
     check_key(k, "meta")
@@ -330,7 +334,7 @@ def timestamp(_signed: Json) -> Timestamp:
     check_key(k, "snapshot.json")
     check_empty(timesnaps)
 
-    _expires = header(_signed, "timestamp")
+    _, _expires = header(_signed, "timestamp")
 
     return Timestamp(
         _expires,
@@ -341,14 +345,14 @@ def timestamp(_signed: Json) -> Timestamp:
 
 
 def snapshot(_signed: Json) -> Snapshot:
-    _spec_version, version = footer(_signed)
+    _spec_version, _, version = footer(_signed)
 
     k, _meta = _signed.popitem()
     check_key(k, "meta")
     timesnaps = meta(_meta)
     check_dict(timesnaps)
 
-    _expires = header(_signed, "snapshot")
+    _, _expires = header(_signed, "snapshot")
 
     return Snapshot(
         _expires,
@@ -387,38 +391,22 @@ def target_files(_target_files: Json) -> TargetFiles:
     return {path: target_file(file) for path, file in _target_files.items()}
 
 
-# FIXME: I don't see a good way to reuse header/footer here, but we can push
-# that to the future.
 def targets(_signed: Json) -> Targets:
-    check_dict(_signed)
+    def get_target_files(_signed: Json) -> TargetFiles:
+        k, _target_files = _signed.popitem()
+        check_key(k, "targets")
+        return target_files(_target_files)
 
-    k, version = _signed.popitem()
-    check_key(k, "version")
-    version = Version(version)
+    _spec_version, _target_files, version = footer(_signed, get_target_files)
 
-    k, _target_files = _signed.popitem()
-    check_key(k, "targets")
-    _target_files = target_files(_target_files)
+    def get_delegations(_signed: Json) -> None:
+        k, delegations = _signed.popitem()
+        check_key(k, "delegations")
+        # TODO: parse delegations.
+        check_dict(delegations)
 
-    k, _spec_version = _signed.popitem()
-    check_key(k, "spec_version")
-    _spec_version = spec_version(_spec_version)
+    _, _expires = header(_signed, "targets", get_delegations)
 
-    k, _expires = _signed.popitem()
-    check_key(k, "expires")
-    _expires = expires(_expires)
-
-    k, delegations = _signed.popitem()
-    check_key(k, "delegations")
-    # TODO: parse delegations.
-    check_dict(delegations)
-
-    k, _type = _signed.popitem()
-    check_key(k, "_type")
-    if _type != "targets":
-        raise ValueError(f"{_signed} has unexpected type {_type} != targets")
-
-    check_empty(_signed)
     return Targets(_expires, _spec_version, version, _target_files)
 
 

@@ -312,14 +312,10 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
             # 5.6. Verify the desired target against its targets metadata.
             target_file = self.__update_targets(relpath, self.__root.targets, "targets")
 
-            # 5.6.1. If there is no targets metadata about this target, abort
-            # the update cycle and report that there is no such target.
-            if not target_file:
-                raise TargetNotFoundError(f"{relpath}")
-
-            # 5.6.2. Otherwise, download the target, and verify that its hashes
-            # match the targets metadata.
-            else:
+            # 5.6.2. Otherwise (if there is targets metadata about this target),
+            # download the target, and verify that its hashes match the targets
+            # metadata.
+            if target_file:
                 remote_path = self.__remote_targets_path(relpath)
                 tmp_file = self.download(remote_path, target_file.length, self.config)
                 self.__check_length(tmp_file, target_file.length)
@@ -329,9 +325,15 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
                 self.mv_file(tmp_file, local_path)
                 return local_path
 
-        except Exception:
+        except Exception as e:
             self.close()
-            raise
+            raise TargetNotFoundError(f"{relpath}") from e
+
+        else:
+            # 5.6.1. If there is no targets metadata about this target, abort
+            # the update cycle and report that there is no such target.
+            self.close()
+            raise TargetNotFoundError(f"{relpath}")
 
 
 class JSONRepository(Repository, HTTPXDownloaderMixIn, JSONReaderMixIn):
