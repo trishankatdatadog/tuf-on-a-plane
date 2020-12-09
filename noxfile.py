@@ -15,6 +15,8 @@ def install_with_constraints(session, *args, **kwargs):
             "poetry",
             "export",
             "--dev",
+            # https://github.com/python-poetry/poetry/issues/3472#issuecomment-744356551
+            "--without-hashes",
             "--format=requirements.txt",
             f"--output={requirements.name}",
             external=True,
@@ -54,15 +56,6 @@ def mypy(session):
 @nox.session(python=pythons[0])
 def safety(session):
     with tempfile.NamedTemporaryFile() as requirements:
-        session.run(
-            "poetry",
-            "export",
-            "--dev",
-            "--format=requirements.txt",
-            "--without-hashes",
-            f"--output={requirements.name}",
-            external=True,
-        )
         install_with_constraints(session, "safety")
         session.run("safety", "check", f"--file={requirements.name}", "--full-report")
 
