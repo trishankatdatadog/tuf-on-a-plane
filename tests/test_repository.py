@@ -2,7 +2,8 @@ import os
 import shutil
 import tempfile
 
-from tuf_on_a_plane.repository import Config, JSONRepository
+from tuf_on_a_plane.models.common import Filepath
+from tuf_on_a_plane.repository import Config, JSONRepository, Target
 
 
 def test_e2e_succeeds():
@@ -20,6 +21,16 @@ def test_e2e_succeeds():
         temp_targets_cache.name,
     )
 
+    def get(relpath: Filepath, depth: int = 0) -> None:
+        print((depth * "\t") + relpath)
+        t: Target = r.get(relpath)
+        assert os.path.exists(t.path)
+        if t.target.custom:
+            paths = t.target.custom.get("in-toto")
+            if paths:
+                for path in paths:
+                    get(path, depth + 1)
+
     try:
         r = JSONRepository(c)
     except Exception:
@@ -27,13 +38,7 @@ def test_e2e_succeeds():
         temp_targets_cache.cleanup()
     else:
         try:
-            # Exists in the top-level targets role.
-            f = r.get("in-toto-metadata/root.layout")
-            assert os.path.exists(f)
-
-            # Exists in delegated targets role.
-            f = r.get("simple/index.html")
-            assert os.path.exists(f)
+            get("simple/index.html")
         finally:
             temp_metadata_cache.cleanup()
             temp_targets_cache.cleanup()

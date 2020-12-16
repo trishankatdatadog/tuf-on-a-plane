@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from fnmatch import fnmatch
 from typing import cast, Optional
 from urllib.parse import urljoin
@@ -38,6 +39,12 @@ from .models.metadata import (
 )
 from .readers import JSONReaderMixIn, ReaderMixIn
 from .writers import WriterMixIn
+
+
+@dataclass
+class Target:
+    path: Filepath
+    target: TargetFile
 
 
 # This is a Repository, not a Client, because I want to make it clear that you
@@ -346,7 +353,7 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         )
 
     # FIXME: consider using a context manager for cleanup.
-    def get(self, relpath: str) -> Filepath:
+    def get(self, relpath: str) -> Target:
         """Use this function to securely download and verify an update."""
         try:
             # 5.6. Verify the desired target against its targets metadata.
@@ -365,7 +372,7 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
 
                 local_path = self.__local_targets_filename(relpath)
                 self.mv_file(tmp_file, local_path)
-                return local_path
+                return Target(local_path, target_file)
 
         except Exception as e:
             self.close()
