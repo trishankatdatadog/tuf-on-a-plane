@@ -1,3 +1,4 @@
+from fnmatch import fnmatch
 from typing import cast, Optional
 from urllib.parse import urljoin
 
@@ -16,7 +17,9 @@ from .exceptions import (
 from .models.common import (
     Comparable,
     Filepath,
+    Positive,
     Rolename,
+    Rolenames,
     Url,
     Version,
 )
@@ -270,10 +273,45 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         self.mv_file(tmp_file, self.__local_metadata_filename("snapshot"))
         self.__snapshot = curr_metadata.signed
 
+    def __preorder_dfs(
+        self,
+        targets: Targets,
+        target_relpath: Filepath,
+        visited: Rolenames,
+        counter: Positive,
+    ) -> Optional[TargetFile]:
+        target_file = targets.targets.get(target_relpath)
+        if target_file:
+            return target_file
+        else:
+            for rolename, delegation in targets.delegations.items():
+                if rolename not in visited:
+                    for path in delegation.paths:
+                        if fnmatch(target_relpath, path):
+                            target_file = self.__update_targets(
+                                visited,
+                                counter + 1,
+                                rolename,
+                                delegation.role,
+                                target_relpath,
+                            )
+                            if target_file or delegation.terminating:
+                                return target_file
+            return None
+
     def __update_targets(
-        self, target_relpath: Filepath, role: ThresholdOfPublicKeys, rolename: Rolename
+        self,
+        visited: Rolenames,
+        counter: Positive,
+        rolename: Rolename,
+        role: ThresholdOfPublicKeys,
+        target_relpath: Filepath,
     ) -> Optional[TargetFile]:
         """5.5. Download the top-level targets metadata file."""
+        if rolename in visited or counter > self.config.MAX_PREORDER_DFS_VISITS:
+            return None
+        visited.add(rolename)
+
         name = self.role_filename(rolename)
         timesnap = self.__snapshot.targets.get(name)
         if not timesnap:
@@ -301,16 +339,20 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         # 5.5.5. Persist targets metadata.
         self.mv_file(tmp_file, self.__local_metadata_filename(rolename))
 
-        # TODO: 5.5.6. Perform a pre-order depth-first search for metadata about
-        # the desired target, beginning with the top-level targets role.
-        return curr_metadata.signed.targets.get(target_relpath)
+        # 5.5.6. Perform a pre-order depth-first search for metadata about the
+        # desired target, beginning with the top-level targets role.
+        return self.__preorder_dfs(
+            curr_metadata.signed, target_relpath, visited, counter
+        )
 
     # FIXME: consider using a context manager for cleanup.
     def get(self, relpath: str) -> Filepath:
         """Use this function to securely download and verify an update."""
         try:
             # 5.6. Verify the desired target against its targets metadata.
-            target_file = self.__update_targets(relpath, self.__root.targets, "targets")
+            target_file = self.__update_targets(
+                set(), Positive(1), "targets", self.__root.targets, relpath
+            )
 
             # 5.6.2. Otherwise (if there is targets metadata about this target),
             # download the target, and verify that its hashes match the targets
