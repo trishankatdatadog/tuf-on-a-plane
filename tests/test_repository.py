@@ -22,16 +22,19 @@ def test_e2e_succeeds():
 
     try:
         r = JSONRepository(c)
-
-        # Exists in the top-level targets role.
-        f = r.get("in-toto-metadata/root.layout")
-        assert os.path.exists(f)
-
-        # Exists in delegated targets role.
-        f = r.get("simple/index.html")
-        assert os.path.exists(f)
-
-    finally:
-        r.close()
+    except Exception:
         temp_metadata_cache.cleanup()
         temp_targets_cache.cleanup()
+    else:
+        try:
+            # Exists in the top-level targets role.
+            f = r.get("in-toto-metadata/root.layout")
+            assert os.path.exists(f)
+
+            # Exists in delegated targets role.
+            f = r.get("simple/index.html")
+            assert os.path.exists(f)
+        finally:
+            temp_metadata_cache.cleanup()
+            temp_targets_cache.cleanup()
+            r.close()

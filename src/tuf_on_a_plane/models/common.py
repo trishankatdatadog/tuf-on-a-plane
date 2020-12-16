@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta, timezone
 from functools import total_ordering
 import re
-from typing import Any, cast, Dict
+from typing import Any, cast, Dict, List
 
 Dir = str
 Filepath = str
+Filepaths = List[Filepath]
 Hashes = Dict[str, str]
 Json = Dict[str, Any]
 KeyID = str
