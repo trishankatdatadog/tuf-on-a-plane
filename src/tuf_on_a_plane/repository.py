@@ -10,6 +10,7 @@ from .exceptions import (
     DownloadNotFoundError,
     EndlessDataAttack,
     FreezeAttack,
+    InconsistentTargetError,
     MixAndMatchAttack,
     NoConsistentSnapshotsError,
     RollbackAttack,
@@ -18,6 +19,9 @@ from .exceptions import (
 from .models.common import (
     Comparable,
     Filepath,
+    Hash,
+    Hashes,
+    Length,
     Positive,
     Rolename,
     Rolenames,
@@ -25,8 +29,6 @@ from .models.common import (
     Version,
 )
 from .models.metadata import (
-    Hashes,
-    Length,
     Metadata,
     Root,
     Signed,
@@ -104,7 +106,10 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
     def __remote_metadata_path(self, relpath: Filepath) -> Url:
         return urljoin(self.config.metadata_root, relpath)
 
-    def __remote_targets_path(self, relpath: Filepath) -> Url:
+    def __remote_targets_path(self, relpath: Filepath, _hash: Hash) -> Url:
+        dirname, basename = self.split_path(relpath)
+        basename = f"{_hash}.{basename}"
+        relpath = self.join_path(dirname, basename)
         return urljoin(self.config.targets_root, relpath)
 
     def __refresh(self) -> None:
@@ -242,7 +247,9 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
 
     def __update_snapshot(self) -> None:
         """5.4. Download snapshot metadata file."""
-        name = self.role_filename("snapshot")
+        name = self.__remote_metadata_filename(
+            "snapshot", self.__timestamp.snapshot.version
+        )
         path = self.__remote_metadata_path(name)
         length = self.__timestamp.snapshot.length or self.config.MAX_SNAPSHOT_LENGTH
         tmp_file = self.download(path, length, self.config)
@@ -324,8 +331,9 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         if not timesnap:
             raise MixAndMatchAttack(f"{rolename} not in {self.__snapshot}")
 
-        length = timesnap.length or self.config.MAX_TARGETS_LENGTH
+        name = self.__remote_metadata_filename(rolename, timesnap.version)
         path = self.__remote_metadata_path(name)
+        length = timesnap.length or self.config.MAX_TARGETS_LENGTH
         tmp_file = self.download(path, length, self.config)
         self.__check_length(tmp_file, length)
 
@@ -365,8 +373,19 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
             # download the target, and verify that its hashes match the targets
             # metadata.
             if target_file:
-                remote_path = self.__remote_targets_path(relpath)
-                tmp_file = self.download(remote_path, target_file.length, self.config)
+                for _hash in target_file.hashes.values():
+                    remote_path = self.__remote_targets_path(relpath, _hash)
+                    try:
+                        tmp_file = self.download(
+                            remote_path, target_file.length, self.config
+                        )
+                    except DownloadNotFoundError:
+                        continue
+                    else:
+                        break
+                else:
+                    raise InconsistentTargetError(f"{relpath}")
+
                 self.__check_length(tmp_file, target_file.length)
                 self.__check_hashes(tmp_file, target_file.hashes)
 

@@ -6,7 +6,9 @@ from typing import Any, cast, Dict, List, Set
 Dir = str
 Filepath = str
 Filepaths = List[Filepath]
-Hashes = Dict[str, str]
+Hash = str
+# algorithm: value
+Hashes = Dict[str, Hash]
 Json = Dict[str, Any]
 KeyID = str
 Rolename = str
