@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "tuf-on-a-plane"
-version = "0.1.0"
+version = "0.9.0"
 description = "A minimal, Pythonic TUF client"
 license = "Apache 2.0"
 readme = "README.md"

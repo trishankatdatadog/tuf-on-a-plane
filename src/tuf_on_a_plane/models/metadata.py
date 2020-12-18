@@ -10,10 +10,12 @@ from .common import (
     Comparable,
     DateTime,
     Filepath,
+    Filepaths,
     Hashes,
     Json,
     KeyID,
     Length,
+    Rolename,
     SpecVersion,
     Threshold,
     Version,
@@ -197,5 +199,17 @@ TargetFiles = Dict[Filepath, TargetFile]
 
 
 @dataclass
+class Delegation:
+    role: ThresholdOfPublicKeys
+    # TODO: path_hash_prefixes
+    paths: Filepaths
+    terminating: bool = False
+
+
+Delegations = Dict[Rolename, Delegation]
+
+
+@dataclass
 class Targets(Signed):
     targets: TargetFiles
+    delegations: Delegations

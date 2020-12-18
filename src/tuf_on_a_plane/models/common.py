@@ -1,14 +1,18 @@
 from datetime import datetime, timedelta, timezone
 from functools import total_ordering
 import re
-from typing import Any, cast, Dict
+from typing import Any, cast, Dict, List, Set
 
 Dir = str
 Filepath = str
-Hashes = Dict[str, str]
+Filepaths = List[Filepath]
+Hash = str
+# algorithm: value
+Hashes = Dict[str, Hash]
 Json = Dict[str, Any]
 KeyID = str
 Rolename = str
+Rolenames = Set[Rolename]
 Url = str
 
 

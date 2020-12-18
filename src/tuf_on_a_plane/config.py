@@ -7,6 +7,7 @@ from .models.common import (
     DateTime,
     Dir,
     Length,
+    Positive,
     Speed,
     Url,
 )
@@ -25,6 +26,9 @@ class Config:
 
     # Where to store temporary files.
     temp_dir = tempfile.mkdtemp()
+
+    # Maximum number of unique targets roles to visit per target.
+    MAX_PREORDER_DFS_VISITS = Positive(2 ** 5)
 
     # Maximum number of root rotations.
     MAX_ROOT_ROTATIONS = 2 ** 5

@@ -24,6 +24,10 @@ class NoConsistentSnapshotsError(RepositoryError):
     pass
 
 
+class InconsistentTargetError(RepositoryError):
+    pass
+
+
 class TargetNotFoundError(RepositoryError):
     pass
 

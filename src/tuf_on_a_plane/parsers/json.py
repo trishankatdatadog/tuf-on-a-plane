@@ -1,8 +1,10 @@
 """A recursive descent parser for JSON TUF metadata."""
 
+import os
 import re
 from typing import (
     Any,
+    Callable,
     List,
     Sized,
     Tuple,
@@ -14,14 +16,18 @@ from securesystemslib.formats import encode_canonical
 from . import Parser
 from ..models.common import (
     DateTime,
+    Filepaths,
     Hashes,
     Json,
     KeyID,
     Length,
+    Rolename,
     SpecVersion,
     Version,
 )
 from ..models.metadata import (
+    Delegation,
+    Delegations,
     ECDSAScheme,
     ED25519Scheme,
     Metadata,
@@ -50,14 +56,14 @@ def check_dict(d: Any) -> None:
         raise TypeError(f"{d} is not a dict")
 
 
-def check_key(observed: str, expected: str) -> None:
-    if observed != expected:
-        raise ValueError(f"{observed} != {expected}")
-
-
 def canonical(_signed: Json) -> bytes:
     """Returns the UTF-8 encoded canonical JSON representation of _signed."""
     return encode_canonical(_signed).encode("utf-8")
+
+
+def check_key(observed: str, expected: str) -> None:
+    if observed != expected:
+        raise ValueError(f"{observed} != {expected}")
 
 
 def spec_version(sv: str) -> SpecVersion:
@@ -65,6 +71,24 @@ def spec_version(sv: str) -> SpecVersion:
     if _spec_version.major != 1:
         raise ValueError(f"unsupported major spec_version: {_spec_version}")
     return _spec_version
+
+
+def footer(
+    _signed: Json, callback: Callable[[Json], Any] = lambda x: None
+) -> Tuple[SpecVersion, Any, Version]:
+    check_dict(_signed)
+
+    k, version = _signed.popitem()
+    check_key(k, "version")
+    version = Version(version)
+
+    result = callback(_signed)
+
+    k, _spec_version = _signed.popitem()
+    check_key(k, "spec_version")
+    _spec_version = spec_version(_spec_version)
+
+    return _spec_version, result, version
 
 
 def check_empty(i: Sized) -> None:
@@ -140,27 +164,35 @@ def keys(_keys: Json) -> PublicKeys:
     return {keyid: key(_key) for keyid, _key in _keys.items()}
 
 
+def check_int(i: Any) -> None:
+    if not isinstance(i, int):
+        raise ValueError(f"{i} is not an int")
+
+
 def check_list(_list: Any) -> None:
     if not isinstance(_list, list):
         raise TypeError(f"{_list} is not a list")
 
 
-def root_role(role: dict, _keys: PublicKeys) -> ThresholdOfPublicKeys:
-    check_dict(role)
+def role(
+    _role: dict, _keys: PublicKeys, callback: Callable[[Json], Any] = lambda x: None
+) -> Tuple[Any, ThresholdOfPublicKeys]:
+    check_dict(_role)
 
-    k, threshold = role.popitem()
+    k, threshold = _role.popitem()
     check_key(k, "threshold")
-    if not isinstance(threshold, int):
-        raise ValueError(f"{threshold} is not an int")
+    check_int(threshold)
     threshold = Threshold(threshold)
 
-    k, keyids = role.popitem()
+    result = callback(_role)
+
+    k, keyids = _role.popitem()
     check_key(k, "keyids")
     check_list(keyids)
     _keys = {keyid: _keys[keyid] for keyid in set(keyids)}
 
-    check_empty(role)
-    return ThresholdOfPublicKeys(threshold, _keys)
+    check_empty(_role)
+    return result, ThresholdOfPublicKeys(threshold, _keys)
 
 
 def root_roles(
@@ -175,19 +207,19 @@ def root_roles(
 
     k, timestamp = roles.popitem()
     check_key(k, "timestamp")
-    timestamp = root_role(timestamp, _keys)
+    _, timestamp = role(timestamp, _keys)
 
     k, targets = roles.popitem()
     check_key(k, "targets")
-    targets = root_role(targets, _keys)
+    _, targets = role(targets, _keys)
 
     k, snapshot = roles.popitem()
     check_key(k, "snapshot")
-    snapshot = root_role(snapshot, _keys)
+    _, snapshot = role(snapshot, _keys)
 
     k, root = roles.popitem()
     check_key(k, "root")
-    root = root_role(root, _keys)
+    _, root = role(root, _keys)
 
     return root, snapshot, targets, timestamp
 
@@ -196,22 +228,32 @@ def expires(_expires: str) -> DateTime:
     return DateTime.strptime(_expires, "%Y-%m-%dT%H:%M:%S%z")
 
 
-def footer(_signed: Json) -> Tuple[SpecVersion, Version]:
-    check_dict(_signed)
+def header(
+    _signed: Json, expected_type: str, callback: Callable[[Json], Any] = lambda x: None
+) -> Tuple[Any, DateTime]:
+    k, _expires = _signed.popitem()
+    check_key(k, "expires")
+    _expires = expires(_expires)
 
-    k, version = _signed.popitem()
-    check_key(k, "version")
-    version = Version(version)
+    result = callback(_signed)
 
-    k, _spec_version = _signed.popitem()
-    check_key(k, "spec_version")
-    _spec_version = spec_version(_spec_version)
+    k, _type = _signed.popitem()
+    check_key(k, "_type")
+    if _type != expected_type:
+        raise ValueError(f"{_signed} has unexpected type {_type} != {expected_type}")
 
-    return _spec_version, version
+    check_empty(_signed)
+
+    return result, _expires
+
+
+def check_bool(b: Any) -> None:
+    if not isinstance(b, bool):
+        raise TypeError(f"{b} is not a bool")
 
 
 def root(_signed: Json) -> Root:
-    _spec_version, version = footer(_signed)
+    _spec_version, _, version = footer(_signed)
 
     k, _root_roles = _signed.popitem()
     check_key(k, "roles")
@@ -223,21 +265,13 @@ def root(_signed: Json) -> Root:
     # TODO: is it a big deal that we do not check whether all keys listed are used?
     _root, _snapshot, _targets, _timestamp = root_roles(_root_roles, _keys)
 
-    k, _expires = _signed.popitem()
-    check_key(k, "expires")
-    _expires = expires(_expires)
+    def callback(_signed: Json) -> bool:
+        k, consistent_snapshot = _signed.popitem()
+        check_key(k, "consistent_snapshot")
+        check_bool(consistent_snapshot)
+        return consistent_snapshot
 
-    k, consistent_snapshot = _signed.popitem()
-    check_key(k, "consistent_snapshot")
-    if not isinstance(consistent_snapshot, bool):
-        raise TypeError(
-            f"{_signed} has non-boolean consistent_snapshot: {consistent_snapshot}"
-        )
-
-    k, _type = _signed.popitem()
-    check_key(k, "_type")
-    if _type != "root":
-        raise ValueError(f"{_signed} has unexpected type {_type}")
+    consistent_snapshot, _expires = header(_signed, "root", callback=callback)
 
     check_empty(_signed)
     return Root(
@@ -252,7 +286,13 @@ def root(_signed: Json) -> Root:
     )
 
 
-METADATA_FILENAME_PATTERN = re.compile(r"^[0-9a-z\-]+\.json$")
+ROLENAME_PATTERN = re.compile(r"^[0-9a-z\-]+")
+
+
+def check_rolename(rolename: Rolename) -> None:
+    check_str(rolename)
+    if not ROLENAME_PATTERN.fullmatch(rolename):
+        raise ValueError(f"{rolename} is not a valid targets rolename")
 
 
 def hashes(_hashes: Json) -> Hashes:
@@ -268,13 +308,12 @@ def hashes(_hashes: Json) -> Hashes:
 
 def meta(_meta: Json) -> TimeSnaps:
     check_dict(_meta)
-    timesnaps = {}
+    timesnaps: TimeSnaps = {}
 
     # NOTE: we iterate in order of appearance to preserve it in the new dict.
     for filename, timesnap in _meta.items():
-        check_str(filename)
-        if not METADATA_FILENAME_PATTERN.fullmatch(filename):
-            raise ValueError(f"{filename} is not a valid targets filename")
+        rolename, _ = os.path.splitext(filename)
+        check_rolename(rolename)
 
         check_dict(timesnap)
         k, version = timesnap.popitem()
@@ -303,23 +342,8 @@ def meta(_meta: Json) -> TimeSnaps:
     return timesnaps
 
 
-def header(_signed: Json, expected_type: str) -> DateTime:
-    k, _expires = _signed.popitem()
-    check_key(k, "expires")
-    _expires = expires(_expires)
-
-    k, _type = _signed.popitem()
-    check_key(k, "_type")
-    if _type != expected_type:
-        raise ValueError(f"{_signed} has unexpected type {_type} != {expected_type}")
-
-    check_empty(_signed)
-
-    return _expires
-
-
 def timestamp(_signed: Json) -> Timestamp:
-    _spec_version, version = footer(_signed)
+    _spec_version, _, version = footer(_signed)
 
     k, _meta = _signed.popitem()
     check_key(k, "meta")
@@ -330,7 +354,7 @@ def timestamp(_signed: Json) -> Timestamp:
     check_key(k, "snapshot.json")
     check_empty(timesnaps)
 
-    _expires = header(_signed, "timestamp")
+    _, _expires = header(_signed, "timestamp")
 
     return Timestamp(
         _expires,
@@ -341,14 +365,14 @@ def timestamp(_signed: Json) -> Timestamp:
 
 
 def snapshot(_signed: Json) -> Snapshot:
-    _spec_version, version = footer(_signed)
+    _spec_version, _, version = footer(_signed)
 
     k, _meta = _signed.popitem()
     check_key(k, "meta")
     timesnaps = meta(_meta)
     check_dict(timesnaps)
 
-    _expires = header(_signed, "snapshot")
+    _, _expires = header(_signed, "snapshot")
 
     return Snapshot(
         _expires,
@@ -387,39 +411,79 @@ def target_files(_target_files: Json) -> TargetFiles:
     return {path: target_file(file) for path, file in _target_files.items()}
 
 
-# FIXME: I don't see a good way to reuse header/footer here, but we can push
-# that to the future.
+# One or more of anything in [a-zA-Z0-9_], a hypen, an asterisk, or a dot.
+_FILENAME_PATTERN = r"[\w\-*.]+"
+# One or more filenames, separated by a forward slash.
+TARGETS_PATH_PATTERN = re.compile(
+    fr"^{_FILENAME_PATTERN}(?:/{_FILENAME_PATTERN})*$", re.ASCII
+)
+
+
+def targets_roles(roles: dict, _keys: PublicKeys) -> Delegations:
+    check_list(roles)
+    delegations: Delegations = {}
+
+    def callback(_role: dict) -> Tuple[Rolename, Filepaths, bool]:
+        k, terminating = _role.popitem()
+        check_key(k, "terminating")
+        check_bool(terminating)
+
+        k, paths = _role.popitem()
+        check_key(k, "paths")
+        check_list(paths)
+        for path in paths:
+            if not TARGETS_PATH_PATTERN.fullmatch(path):
+                raise ValueError(f"{path} is not a valid targets path pattern")
+
+        k, rolename = _role.popitem()
+        check_key(k, "name")
+        check_rolename(rolename)
+
+        return rolename, paths, terminating
+
+    # NOTE: we iterate in order of appearance to preserve it in the new dict.
+    while len(roles) > 0:
+        _role = roles.pop(0)
+
+        rolename: Rolename
+        paths: Filepaths
+        terminating: bool
+        result, _role = role(_role, _keys, callback=callback)
+        rolename, paths, terminating = result
+        if rolename in delegations:
+            raise ValueError(f"{roles} has duplicate {rolename}")
+
+        delegations[rolename] = Delegation(_role, paths, terminating)
+
+    return delegations
+
+
 def targets(_signed: Json) -> Targets:
-    check_dict(_signed)
+    def get_target_files(_signed: Json) -> TargetFiles:
+        k, _target_files = _signed.popitem()
+        check_key(k, "targets")
+        return target_files(_target_files)
 
-    k, version = _signed.popitem()
-    check_key(k, "version")
-    version = Version(version)
+    _spec_version, _target_files, version = footer(_signed, callback=get_target_files)
 
-    k, _target_files = _signed.popitem()
-    check_key(k, "targets")
-    _target_files = target_files(_target_files)
+    def get_delegations(_signed: Json) -> Delegations:
+        k, delegations = _signed.popitem()
+        check_key(k, "delegations")
+        check_dict(delegations)
 
-    k, _spec_version = _signed.popitem()
-    check_key(k, "spec_version")
-    _spec_version = spec_version(_spec_version)
+        k, _targets_roles = delegations.popitem()
+        check_key(k, "roles")
 
-    k, _expires = _signed.popitem()
-    check_key(k, "expires")
-    _expires = expires(_expires)
+        k, _keys = delegations.popitem()
+        check_key(k, "keys")
+        _keys = keys(_keys)
 
-    k, delegations = _signed.popitem()
-    check_key(k, "delegations")
-    # TODO: parse delegations.
-    check_dict(delegations)
+        check_empty(delegations)
+        return targets_roles(_targets_roles, _keys)
 
-    k, _type = _signed.popitem()
-    check_key(k, "_type")
-    if _type != "targets":
-        raise ValueError(f"{_signed} has unexpected type {_type} != targets")
+    delegations, _expires = header(_signed, "targets", callback=get_delegations)
 
-    check_empty(_signed)
-    return Targets(_expires, _spec_version, version, _target_files)
+    return Targets(_expires, _spec_version, version, _target_files, delegations)
 
 
 def signed(_signed: Json) -> Signed:

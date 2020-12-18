@@ -1,5 +1,5 @@
 import os
-from typing import Iterable
+from typing import Iterable, Tuple
 
 from securesystemslib.util import get_file_hashes, load_json_file
 
@@ -51,6 +51,9 @@ class ReaderMixIn:
     def read_from_file(self, path: Filepath) -> Metadata:
         """Read, parse, and return the Metadata from the file."""
         raise NotImplementedError
+
+    def split_path(self, path: Filepath) -> Tuple[Filepath, Filepath]:
+        return os.path.split(path)
 
 
 class JSONReaderMixIn(ReaderMixIn):
