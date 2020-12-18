@@ -153,6 +153,7 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         """5.2. Update the root metadata file."""
         # 5.2.1. Let N denote the version number of the trusted root metadata
         # file.
+        rolename = "root"
         prev_root = self.__root
         curr_root = prev_root
         n = curr_root.version
@@ -161,10 +162,12 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         for _ in range(self.config.MAX_ROOT_ROTATIONS):
             # 5.2.2. Try downloading version N+1 of the root metadata file.
             n += 1
-            name = self.__remote_metadata_filename("root", n)
-            path = self.__remote_metadata_path(name)
+            remote_filename = self.__remote_metadata_filename(rolename, n)
+            remote_path = self.__remote_metadata_path(remote_filename)
             try:
-                tmp_file = self.download(path, self.config.MAX_ROOT_LENGTH, self.config)
+                tmp_file = self.download(
+                    remote_path, self.config.MAX_ROOT_LENGTH, self.config
+                )
             except DownloadNotFoundError:
                 break
             self.__check_length(tmp_file, self.config.MAX_ROOT_LENGTH)
@@ -177,7 +180,9 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
 
             # 5.2.4. Check for a rollback attack.
             if metadata.signed.version != n:
-                raise RollbackAttack(f"{metadata.signed.version} != {n} in {path}")
+                raise RollbackAttack(
+                    f"{metadata.signed.version} != {n} in {remote_path}"
+                )
 
             # 5.2.5. Note that the expiration of the new (intermediate) root
             # metadata file does not matter yet.
@@ -213,14 +218,23 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
             # 5.2.7. Persist root metadata.
             # NOTE: We violate the spec in persisting only *after* checking
             # everything, which I think is reasonable.
-            self.mv_file(tmp_file, self.__local_metadata_filename("root"))
+            self.mv_file(tmp_file, self.__local_metadata_filename(rolename))
             self.__root = curr_root
+
+    def __get_prev_metadata(self, rolename: Rolename) -> Optional[Metadata]:
+        filename = self.__local_metadata_filename(rolename)
+        if self.file_exists(filename):
+            return self.read_from_file(filename)
+        return None
 
     def __update_timestamp(self) -> None:
         """5.3. Download the timestamp metadata file."""
-        name = self.role_filename("timestamp")
-        path = self.__remote_metadata_path(name)
-        tmp_file = self.download(path, self.config.MAX_TIMESTAMP_LENGTH, self.config)
+        rolename = "timestamp"
+        role_filename = self.role_filename(rolename)
+        remote_path = self.__remote_metadata_path(role_filename)
+        tmp_file = self.download(
+            remote_path, self.config.MAX_TIMESTAMP_LENGTH, self.config
+        )
         self.__check_length(tmp_file, self.config.MAX_TIMESTAMP_LENGTH)
 
         # 5.3.1. Check for an arbitrary software attack.
@@ -229,9 +243,8 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         self.__check_signatures(self.__root.timestamp, curr_metadata)
 
         # 5.3.2. Check for a rollback attack.
-        prev_filename = self.__local_metadata_filename("timestamp")
-        if self.file_exists(prev_filename):
-            prev_metadata = self.read_from_file(prev_filename)
+        prev_metadata = self.__get_prev_metadata(rolename)
+        if prev_metadata:
             prev_metadata.signed = cast(Timestamp, prev_metadata.signed)
             self.__check_rollback(prev_metadata.signed, curr_metadata.signed)
             self.__check_rollback(
@@ -242,17 +255,30 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         self.__check_expiry(curr_metadata.signed)
 
         # 5.3.4. Persist timestamp metadata.
-        self.mv_file(tmp_file, self.__local_metadata_filename("timestamp"))
+        self.mv_file(tmp_file, self.__local_metadata_filename(rolename))
         self.__timestamp = curr_metadata.signed
 
     def __update_snapshot(self) -> None:
         """5.4. Download snapshot metadata file."""
-        name = self.__remote_metadata_filename(
-            "snapshot", self.__timestamp.snapshot.version
+        rolename = "snapshot"
+        prev_metadata = self.__get_prev_metadata(rolename)
+        obsolete = (
+            not prev_metadata
+            or prev_metadata.signed.version < self.__timestamp.snapshot.version
         )
-        path = self.__remote_metadata_path(name)
+        local_filename = self.__local_metadata_filename(rolename)
         length = self.__timestamp.snapshot.length or self.config.MAX_SNAPSHOT_LENGTH
-        tmp_file = self.download(path, length, self.config)
+
+        # Download metadata only if not cached or if it is obsolete.
+        if not obsolete:
+            tmp_file = local_filename
+        else:
+            remote_filename = self.__remote_metadata_filename(
+                rolename, self.__timestamp.snapshot.version
+            )
+            remote_path = self.__remote_metadata_path(remote_filename)
+            tmp_file = self.download(remote_path, length, self.config)
+
         self.__check_length(tmp_file, length)
 
         # 5.4.1. Check against timestamp role's snapshot hash.
@@ -267,9 +293,7 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         self.__check_version(curr_metadata.signed, self.__timestamp.snapshot)
 
         # 5.4.4. Check for a rollback attack.
-        prev_filename = self.__local_metadata_filename("snapshot")
-        if self.file_exists(prev_filename):
-            prev_metadata = self.read_from_file(prev_filename)
+        if prev_metadata:
             prev_metadata.signed = cast(Snapshot, prev_metadata.signed)
 
             for filename, prev_timesnap in prev_metadata.signed.targets.items():
@@ -284,7 +308,8 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         self.__check_expiry(curr_metadata.signed)
 
         # 5.4.6. Persist snapshot metadata.
-        self.mv_file(tmp_file, self.__local_metadata_filename("snapshot"))
+        if obsolete:
+            self.mv_file(tmp_file, local_filename)
         self.__snapshot = curr_metadata.signed
 
     def __preorder_dfs(
@@ -326,15 +351,26 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
             return None
         visited.add(rolename)
 
-        name = self.role_filename(rolename)
-        timesnap = self.__snapshot.targets.get(name)
+        role_filename = self.role_filename(rolename)
+        timesnap = self.__snapshot.targets.get(role_filename)
         if not timesnap:
             raise MixAndMatchAttack(f"{rolename} not in {self.__snapshot}")
 
-        name = self.__remote_metadata_filename(rolename, timesnap.version)
-        path = self.__remote_metadata_path(name)
+        prev_metadata = self.__get_prev_metadata(rolename)
+        obsolete = not prev_metadata or prev_metadata.signed.version < timesnap.version
+        local_filename = self.__local_metadata_filename(rolename)
         length = timesnap.length or self.config.MAX_TARGETS_LENGTH
-        tmp_file = self.download(path, length, self.config)
+
+        # Download metadata only if not cached or if it is obsolete.
+        if not obsolete:
+            tmp_file = local_filename
+        else:
+            remote_filename = self.__remote_metadata_filename(
+                rolename, timesnap.version
+            )
+            remote_path = self.__remote_metadata_path(remote_filename)
+            tmp_file = self.download(remote_path, length, self.config)
+
         self.__check_length(tmp_file, length)
 
         # 5.5.1. Check against snapshot role's targets hash.
@@ -352,7 +388,8 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         self.__check_expiry(curr_metadata.signed)
 
         # 5.5.5. Persist targets metadata.
-        self.mv_file(tmp_file, self.__local_metadata_filename(rolename))
+        if obsolete:
+            self.mv_file(tmp_file, local_filename)
 
         # 5.5.6. Perform a pre-order depth-first search for metadata about the
         # desired target, beginning with the top-level targets role.
@@ -373,24 +410,33 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
             # download the target, and verify that its hashes match the targets
             # metadata.
             if target_file:
-                for _hash in target_file.hashes.values():
-                    remote_path = self.__remote_targets_path(relpath, _hash)
-                    try:
-                        tmp_file = self.download(
-                            remote_path, target_file.length, self.config
-                        )
-                    except DownloadNotFoundError:
-                        continue
-                    else:
-                        break
+                local_path = self.__local_targets_filename(relpath)
+                file_exists = self.file_exists(local_path)
+
+                # Download target only if not cached.
+                if file_exists:
+                    tmp_file = local_path
                 else:
-                    raise InconsistentTargetError(f"{relpath}")
+                    # Try downloading every consistent snapshot of the target
+                    # until we get a hit.
+                    for _hash in target_file.hashes.values():
+                        remote_path = self.__remote_targets_path(relpath, _hash)
+                        try:
+                            tmp_file = self.download(
+                                remote_path, target_file.length, self.config
+                            )
+                        except DownloadNotFoundError:
+                            continue
+                        else:
+                            break
+                    else:
+                        raise InconsistentTargetError(f"{relpath}")
 
                 self.__check_length(tmp_file, target_file.length)
                 self.__check_hashes(tmp_file, target_file.hashes)
 
-                local_path = self.__local_targets_filename(relpath)
-                self.mv_file(tmp_file, local_path)
+                if not file_exists:
+                    self.mv_file(tmp_file, local_path)
                 return Target(local_path, target_file)
 
         except Exception as e:

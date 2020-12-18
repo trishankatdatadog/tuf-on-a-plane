@@ -24,7 +24,6 @@ def test_e2e_succeeds():
     def get(relpath: Filepath, depth: int = 0) -> None:
         print((depth * "\t") + relpath)
         t: Target = r.get(relpath)
-        print()
         assert os.path.exists(t.path)
         if t.target.custom:
             paths = t.target.custom.get("in-toto")
@@ -37,6 +36,7 @@ def test_e2e_succeeds():
     except Exception:
         temp_metadata_cache.cleanup()
         temp_targets_cache.cleanup()
+        raise
     else:
         try:
             print()
