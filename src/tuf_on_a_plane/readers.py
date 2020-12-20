@@ -4,7 +4,6 @@ from typing import Iterable, Tuple
 from securesystemslib.util import get_file_hashes, load_json_file
 
 from .models.common import (
-    Dir,
     Filepath,
     Hashes,
     Length,
@@ -38,11 +37,6 @@ class ReaderMixIn:
 
     def join_path(self, path: Filepath, *paths: Filepath) -> Filepath:
         return os.path.join(path, *paths)
-
-    def local_metadata_filename(
-        self, metadata_cache: Dir, rolename: Rolename
-    ) -> Filepath:
-        return self.join_path(metadata_cache, self.role_filename(rolename))
 
     def role_filename(self, rolename: Rolename) -> Filepath:
         """Return the expected filename based on the rolename."""
