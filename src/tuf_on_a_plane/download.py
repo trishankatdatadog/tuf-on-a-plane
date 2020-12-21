@@ -62,7 +62,7 @@ class HTTPXDownloaderMixIn(DownloaderMixIn):
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
             if e.response.status_code in {403, 404}:
-                raise DownloadNotFoundError(path)
+                raise DownloadNotFoundError(path) from e
             raise
 
     def __check_speed(self, path: Url, observed: Speed, expected: Speed) -> None:
@@ -108,7 +108,7 @@ class HTTPXDownloaderMixIn(DownloaderMixIn):
                             temp_file.write(chunk)
 
                         prev_downloaded, prev_time = curr_downloaded, DateTime.now()
-                except httpx.TimeoutException:
-                    raise SlowRetrievalAttack(f"timeout on {path}")
+                except httpx.TimeoutException as e:
+                    raise SlowRetrievalAttack(f"timeout on {path}") from e
 
         return temp_path
