@@ -10,7 +10,7 @@ The idea is not necessarily to rewrite the TUF [reference client](https://github
 
 * A ["hypermodern"](https://cjolowicz.github.io/posts/hypermodern-python-01-setup/) Python setup for packaging, testing, linting, typing, documentation, and CI/CD
 * Everything is [type-hinted](https://docs.python.org/3/library/typing.html)
-* Intermediate metadata represensation a.k.a. [models](https://en.wikipedia.org/wiki/Model%E2%80%93view%E2%80%93controller)
+* Intermediate metadata representation a.k.a. [models](https://en.wikipedia.org/wiki/Model%E2%80%93view%E2%80%93controller)
 * [Recursive descent parsers](https://en.wikipedia.org/wiki/Recursive_descent_parser) for concrete metadata formats (e.g., JSON)
 * Readable code that closely follows the [specification](https://github.com/theupdateframework/specification)
 * Sessions for free: every client instance automatically downloads targets from the latest known [consistent snapshot](https://github.com/theupdateframework/specification/blob/master/tuf-spec.md#7-consistent-snapshots)
