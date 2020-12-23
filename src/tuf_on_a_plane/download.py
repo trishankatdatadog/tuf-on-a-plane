@@ -46,8 +46,9 @@ class HTTPXDownloaderMixIn(DownloaderMixIn):
             },
             # Opportunistically use HTTP/2, if available.
             http2=True,
-            # Use a 60s timeout everywhere (connect/read/write/pool).
-            timeout=60,
+            # Use the same timeout everywhere (connect/read/write/pool).
+            # FIXME: Make this configurable.
+            timeout=2.0,
         )
 
     def close_downloader(self) -> None:

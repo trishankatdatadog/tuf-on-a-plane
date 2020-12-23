@@ -46,7 +46,7 @@ class Config:
 
     # Minimum number of bytes per second that must be downloaded per second
     # *on average* to prevent raising a slow retrieval attack.
-    SLOW_RETRIEVAL_THRESHOLD: Speed = Speed(2 ** 9)
+    SLOW_RETRIEVAL_THRESHOLD: Speed = Speed(2 ** 15)
 
     def close(self) -> None:
         if os.path.isdir(self.temp_dir):
