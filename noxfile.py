@@ -2,7 +2,7 @@ import tempfile
 
 import nox
 
-nox.options.sessions = "lint", "mypy", "safety", "tests"
+nox.options.sessions = "lint", "mypy", "tests"
 
 locations = "src", "tests", "noxfile.py"
 package = "tuf_on_a_plane"
@@ -51,13 +51,6 @@ def mypy(session):
     args = session.posargs or locations
     install_with_constraints(session, "mypy")
     session.run("mypy", *args)
-
-
-@nox.session(python=pythons[0])
-def safety(session):
-    with tempfile.NamedTemporaryFile() as requirements:
-        install_with_constraints(session, "safety")
-        session.run("safety", "check", f"--file={requirements.name}", "--full-report")
 
 
 @nox.session(python=pythons)
