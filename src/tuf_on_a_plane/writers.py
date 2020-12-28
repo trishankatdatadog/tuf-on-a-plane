@@ -13,9 +13,5 @@ class WriterMixIn:
             os.makedirs(dst_dir, mode=0o700, exist_ok=True)
         shutil.move(src, dst)
 
-    def rm_file(self, path: Filepath, ignore_errors: bool = False) -> None:
-        try:
-            os.remove(path)
-        except OSError:
-            if not ignore_errors:
-                raise
+    def rm_file(self, path: Filepath) -> None:
+        os.remove(path)

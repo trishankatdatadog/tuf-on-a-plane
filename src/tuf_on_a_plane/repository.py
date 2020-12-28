@@ -212,14 +212,13 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
                 self.__root.timestamp != curr_root.timestamp
                 or self.__root.snapshot != curr_root.snapshot
             ):
-                self.rm_file(
-                    self.__local_metadata_filename(self.SNAPSHOT_ROLENAME),
-                    ignore_errors=True,
-                )
-                self.rm_file(
-                    self.__local_metadata_filename(self.TIMESTAMP_ROLENAME),
-                    ignore_errors=True,
-                )
+                filename = self.__local_metadata_filename(self.SNAPSHOT_ROLENAME)
+                if self.file_exists(filename):
+                    self.rm_file(filename)
+
+                filename = self.__local_metadata_filename(self.TIMESTAMP_ROLENAME)
+                if self.file_exists(filename):
+                    self.rm_file(filename)
 
             # 5.2.7. Persist root metadata.
             # NOTE: We violate the spec in persisting only *after* checking
