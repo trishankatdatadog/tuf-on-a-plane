@@ -45,8 +45,8 @@ class Config:
     NOW: DateTime = DateTime.laggingnow(minutes=5)
 
     # Minimum number of bytes per second that must be downloaded per second
-    # *on average* to prevent raising a slow retrieval attack.
-    SLOW_RETRIEVAL_THRESHOLD: Speed = Speed(2 ** 15)
+    # *per chunk* to prevent raising a slow retrieval attack.
+    SLOW_RETRIEVAL_THRESHOLD: Speed = Speed(2 ** 13)
 
     def close(self) -> None:
         if os.path.isdir(self.temp_dir):
