@@ -39,7 +39,6 @@ def test_e2e_succeeds():
         raise
     else:
         try:
-            print()
             get("simple/index.html")
         finally:
             temp_metadata_cache.cleanup()

@@ -75,8 +75,8 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         if signed.expires <= self.config.NOW:
             raise FreezeAttack(f"{signed}: {signed.expires} <= {self.config.NOW}")
 
-    def __check_hashes(self, abspath: Filepath, expected: Optional[Hashes]) -> None:
-        if expected and not self.check_hashes(abspath, expected):
+    def __check_hashes(self, abspath: Filepath, expected: Hashes) -> None:
+        if not self.check_hashes(abspath, expected):
             raise ArbitrarySoftwareAttack(f"{abspath} != {expected}")
 
     def __check_length(self, abspath: Filepath, expected: Length) -> None:
@@ -285,7 +285,8 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         self.__check_length(tmp_file, length)
 
         # 5.4.1. Check against timestamp role's snapshot hash.
-        self.__check_hashes(tmp_file, self.__timestamp.snapshot.hashes)
+        if self.__timestamp.snapshot.hashes:
+            self.__check_hashes(tmp_file, self.__timestamp.snapshot.hashes)
 
         # 5.4.2. Check for an arbitrary software attack.
         curr_metadata = self.read_from_file(tmp_file)
@@ -377,7 +378,8 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         self.__check_length(tmp_file, length)
 
         # 5.5.1. Check against snapshot role's targets hash.
-        self.__check_hashes(tmp_file, timesnap.hashes)
+        if timesnap.hashes:
+            self.__check_hashes(tmp_file, timesnap.hashes)
 
         # 5.5.2. Check for an arbitrary software attack.
         curr_metadata = self.read_from_file(tmp_file)
