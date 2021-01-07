@@ -403,18 +403,13 @@ class Repository(WriterMixIn, DownloaderMixIn, ReaderMixIn):
         )
 
     def __get_target(self, target_file: TargetFile, relpath: Filepath) -> Filepath:
-        # Try downloading every consistent snapshot of the target until we get a
-        # hit.
         for _hash in target_file.hashes.values():
             remote_path = self.__remote_targets_path(relpath, _hash)
             try:
                 return self.download(remote_path, target_file.length, self.config)
             except DownloadNotFoundError:
                 continue
-            else:
-                break
-        else:
-            raise InconsistentTargetError(f"{relpath}")
+        raise InconsistentTargetError(f"{relpath}")
 
     # FIXME: consider using a context manager for cleanup.
     def get(self, relpath: Filepath) -> Target:
